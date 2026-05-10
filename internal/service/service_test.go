@@ -7,7 +7,9 @@ import (
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/repository"
@@ -56,6 +58,41 @@ func TestService_IngestLogs_WritesAllRecords(t *testing.T) {
 	if err := repo.DB().QueryRow("SELECT COUNT(*) FROM events").Scan(&n); err != nil {
 		t.Fatal(err)
 	}
+	if n != 2 {
+		t.Fatalf("rows = %d, want 2", n)
+	}
+}
+
+func TestService_IngestMetrics_StoresAllDatapoints(t *testing.T) {
+	repo := openTempRepo(t)
+	svc := New(repo, nil)
+
+	req := &colmetricspb.ExportMetricsServiceRequest{
+		ResourceMetrics: []*metricspb.ResourceMetrics{{
+			ScopeMetrics: []*metricspb.ScopeMetrics{{
+				Metrics: []*metricspb.Metric{{
+					Name: "claude_code.cost.usage",
+					Data: &metricspb.Metric_Sum{Sum: &metricspb.Sum{
+						DataPoints: []*metricspb.NumberDataPoint{
+							{TimeUnixNano: 1, Attributes: []*commonpb.KeyValue{kvStr("session.id", "s1")}, Value: &metricspb.NumberDataPoint_AsDouble{AsDouble: 0.05}},
+						},
+					}},
+				}, {
+					Name: "claude_code.token.usage",
+					Data: &metricspb.Metric_Gauge{Gauge: &metricspb.Gauge{
+						DataPoints: []*metricspb.NumberDataPoint{
+							{TimeUnixNano: 2, Attributes: []*commonpb.KeyValue{kvStr("session.id", "s1")}, Value: &metricspb.NumberDataPoint_AsInt{AsInt: 1500}},
+						},
+					}},
+				}},
+			}},
+		}},
+	}
+	if err := svc.IngestMetrics(context.Background(), req); err != nil {
+		t.Fatalf("IngestMetrics: %v", err)
+	}
+	var n int
+	_ = repo.DB().QueryRow("SELECT COUNT(*) FROM metric_snapshots").Scan(&n)
 	if n != 2 {
 		t.Fatalf("rows = %d, want 2", n)
 	}
