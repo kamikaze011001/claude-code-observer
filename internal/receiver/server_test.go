@@ -13,7 +13,9 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 )
 
 const bufSize = 1024 * 1024
@@ -92,5 +94,67 @@ func TestLogsServer_IngesterError(t *testing.T) {
 	}
 	if got := status.Code(err); got != codes.Unavailable {
 		t.Fatalf("status code = %v, want Unavailable", got)
+	}
+}
+
+type fakeMetricIngester struct {
+	called int
+	err    error
+}
+
+func (f *fakeMetricIngester) IngestMetrics(ctx context.Context, req *colmetricspb.ExportMetricsServiceRequest) error {
+	f.called++
+	return f.err
+}
+
+func newMetricsTestServer(t *testing.T, ing MetricIngester) colmetricspb.MetricsServiceClient {
+	t.Helper()
+	lis := bufconn.Listen(bufSize)
+	gs := grpc.NewServer()
+	colmetricspb.RegisterMetricsServiceServer(gs, NewMetricsServer(ing))
+	go func() { _ = gs.Serve(lis) }()
+	t.Cleanup(gs.Stop)
+
+	conn, err := grpc.NewClient(
+		"passthrough://bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) }),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return colmetricspb.NewMetricsServiceClient(conn)
+}
+
+func TestMetricsServer_WellFormed(t *testing.T) {
+	ing := &fakeMetricIngester{}
+	cli := newMetricsTestServer(t, ing)
+
+	req := &colmetricspb.ExportMetricsServiceRequest{
+		ResourceMetrics: []*metricspb.ResourceMetrics{{
+			ScopeMetrics: []*metricspb.ScopeMetrics{{
+				Metrics: []*metricspb.Metric{{Name: "claude_code.cost.usage"}},
+			}},
+		}},
+	}
+	if _, err := cli.Export(context.Background(), req); err != nil {
+		t.Fatalf("Export error: %v", err)
+	}
+	if ing.called != 1 {
+		t.Fatalf("ingester called %d times, want 1", ing.called)
+	}
+}
+
+func TestMetricsServer_IngesterError(t *testing.T) {
+	ing := &fakeMetricIngester{err: errBoom}
+	cli := newMetricsTestServer(t, ing)
+
+	_, err := cli.Export(context.Background(), &colmetricspb.ExportMetricsServiceRequest{})
+	if err == nil {
+		t.Fatal("want error")
+	}
+	if got := status.Code(err); got != codes.Unavailable {
+		t.Fatalf("status = %v, want Unavailable", got)
 	}
 }
