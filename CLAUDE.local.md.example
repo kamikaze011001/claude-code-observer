@@ -1,0 +1,27 @@
+# CLAUDE.local.md — Personal Overrides
+
+<!-- Do NOT commit this file. Add to .gitignore: CLAUDE.local.md -->
+<!-- This file overrides project CLAUDE.md with personal preferences. -->
+<!-- Priority: CLAUDE.local.md > CLAUDE.md > ~/.claude/CLAUDE.md -->
+
+## Personal Preferences
+
+- [Example: "Explain in English"]
+- [Example: "Show me the diff before committing"]
+- [Example: "Be concise — skip explanations unless I ask"]
+
+## Current Focus
+
+- [Example: "This sprint I'm working on the payments module"]
+- [Example: "Ignore auth-related tests for now — they're being rewritten"]
+
+## Local Environment
+
+- [Example: "Database running on port 5433 instead of 5432"]
+- [Example: "Using Node 22 instead of 20"]
+- [Example: "Redis not available locally — mock it"]
+
+## Notes
+
+- [Example: "Module X is broken on branch feature/xyz — skip it"]
+- [Example: "I prefer Vitest over Jest — use Vitest for new tests"]
