@@ -59,6 +59,7 @@ Single-user, local-only. No HTTP server, no auth, no remote storage.
 - **The `events` table is append-only** at runtime. Pruner is the only deleter and runs in a single goroutine inside the daemon.
 - **Rollup updates happen in the same SQLite transaction as the event insert.** No async backfill at runtime.
 - **Logs is the primary signal** — see [ADR-003](decisions/ADR-003-logs-as-primary-signal.md). Metrics is persisted only for sanity-checking aggregates.
+- **Wire-format constants live in `internal/domain/wire.go`.** Event names (`claude_code.*`) and metric names are declared there once. The rollup registry indexes its updater map by these constants, and `TestApply_AllDomainEventsHaveAHandler` asserts every entry in `domain.AllEventNames` has a handler — real or no-op. Unknown event names emit a `rollup: no handler for event` debug log so future Claude Code releases surface immediately. Source of truth for what Claude Code emits: [docs/CLAUDE-CODE-OTEL.md](CLAUDE-CODE-OTEL.md).
 
 ## Data Flow
 

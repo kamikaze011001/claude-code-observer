@@ -37,7 +37,7 @@ Setup is one paste of an `env` block into a project's `.claude/settings.json`. T
 13. As a developer, I want the Prompt detail view to render a chronological timeline of API Requests, Tool Decisions, and Tool Results with relative timestamps, so that I can see the shape of a Prompt's execution.
 14. As a developer with `OTEL_LOG_TOOL_DETAILS=1` set, I want the Prompt detail view to show the actual Bash command for each Tool Result, so that I can recall what Claude actually did.
 15. As a developer with `OTEL_LOG_TOOL_DETAILS=1` set, I want the Prompt detail view to label Subagent Requests with their `subagent_type` (Explore, Plan, etc.), so that I can tell which kind of subagent was dispatched.
-16. As a developer, I want Tool Decisions to show whether the decision was `allow` or `deny` and whether it came from config / user / hook, so that I can audit my own auto-approve patterns.
+16. As a developer, I want Tool Decisions to show whether the decision was `accept` or `reject` and whether it came from config / user / hook, so that I can audit my own auto-approve patterns.
 17. As a developer, I want a label on each Session showing the Project it ran in, so that I can identify Sessions without remembering their UUIDs.
 18. As a developer, I want a setup snippet I can paste into `.claude/settings.json` to enable telemetry, including a placeholder for `project.name`, so that onboarding a new repo takes 30 seconds.
 19. As a developer, I want the daemon to bind only to `127.0.0.1`, so that no other machine on my network can speak to it.
@@ -179,7 +179,7 @@ Given the project is greenfield, prior art is the Go standard library convention
 
 - **`internal/service/eventparser`** — table-driven. Fixtures under `internal/service/eventparser/testdata/` containing OTLP `LogRecord` JSON for every event type (`user_prompt`, `api_request`, `api_error`, `tool_result`, `tool_decision`, plus an unknown-event-name case and a missing-`session.id` case). For each, assert the parsed `domain.Event` matches expectations. Pure function — no I/O, no test infrastructure.
 
-- **`internal/service/rollup`** — table-driven. Each test case is `(prior Session, prior Prompt, incoming Event) → (next Session, next Prompt)`. Covers: first event in a session creates row; api_request sums cost and tokens; subagent api_request increments subagent_requests; tool_decision deny increments tool_denied; api_error increments api_errors; idempotency under same input.
+- **`internal/service/rollup`** — table-driven. Each test case is `(prior Session, prior Prompt, incoming Event) → (next Session, next Prompt)`. Covers: first event in a session creates row; api_request sums cost and tokens; subagent api_request increments subagent_requests; tool_decision reject increments tool_denied; api_error increments api_errors; idempotency under same input.
 
 - **`internal/service/retention`** — fake-clock test using a small `Clock` interface (`Now() time.Time`). Insert a fixture set spanning 60 days, advance the fake clock, call `Sweep`, assert that events older than retention are gone and idle sessions have `ended_at` set. Uses an in-memory SQLite via `:memory:` for repo backing.
 

@@ -152,7 +152,7 @@ Implement `internal/rollup/` — pure functions: given an existing rollup row + 
 - Table-driven tests in `internal/rollup/`:
   - `api_request` updater: tokens and cost accumulate; `subagent_requests` counter only ticks when `query_source = 'subagent'`
   - `api_error` updater: `api_errors++`, `had_error = 1` on the prompt
-  - `tool_decision` updater: `tool_denied` only when `decision = 'deny'`
+  - `tool_decision` updater: `tool_denied` only when `decision = 'reject'`
   - `tool_result` updater: `tool_calls++`
   - `user_prompt` updater: creates prompt row, sets `prompt_length`, `command_name`, `command_source`
 - Coverage ≥ 90% on `internal/rollup/`

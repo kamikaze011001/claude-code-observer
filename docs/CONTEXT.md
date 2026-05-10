@@ -78,7 +78,7 @@ The `claude-code-observer` (no-args) Bubble Tea process. Owns a read-only SQLite
 > **Domain expert:** "Sum from API Requests — one Prompt produces multiple API Requests when subagents fire or when context is auto-compacted. The Prompt-level cost is itself a sum of its API Requests; the Session-level cost is the sum across all of them."
 
 > **Dev:** "Are Tool Decisions and Tool Results the same thing?"
-> **Domain expert:** "No. A Tool Decision can be `deny`, in which case there is no Tool Result. They are correlated by `tool_use_id` only when both fire."
+> **Domain expert:** "No. A Tool Decision can be `reject`, in which case there is no Tool Result. They are correlated by `tool_use_id` only when both fire."
 
 ## Flagged ambiguities
 

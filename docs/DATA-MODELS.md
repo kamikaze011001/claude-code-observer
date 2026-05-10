@@ -56,7 +56,7 @@
 | subagent_requests | INTEGER | ✅ | Count where `query_source = 'subagent'` |
 | auxiliary_requests | INTEGER | ✅ | Count where `query_source = 'auxiliary'` |
 | tool_calls | INTEGER | ✅ | Count of `tool_result` events |
-| tool_denied | INTEGER | ✅ | Count of `tool_decision` events with `decision = 'deny'` |
+| tool_denied | INTEGER | ✅ | Count of `tool_decision` events with `decision = 'reject'` |
 | prompts | INTEGER | ✅ | Count of distinct `prompt_id` |
 
 **Indexes:** `(started_at DESC)`, `(project_name, started_at DESC)`.
