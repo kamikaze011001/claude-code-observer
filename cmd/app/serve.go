@@ -8,11 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
-	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
-
 	"github.com/kamikaze011001/claude-code-observer/internal/receiver"
 	"github.com/kamikaze011001/claude-code-observer/internal/repository"
+	"github.com/kamikaze011001/claude-code-observer/internal/service"
 )
 
 const defaultListenAddr = "127.0.0.1:4317"
@@ -37,10 +35,11 @@ func newServeCmd() *cobra.Command {
 				return fmt.Errorf("read schema_version: %w", err)
 			}
 
+			svc := service.New(repo, logger)
 			srv := receiver.NewServer(receiver.Config{
 				Addr:    addr,
-				Logs:    &logStubIngester{},
-				Metrics: &metricStubIngester{},
+				Logs:    svc,
+				Metrics: svc,
 				Logger:  logger,
 			})
 			if err := srv.Listen(); err != nil {
@@ -84,19 +83,4 @@ func readSchemaVersion(ctx context.Context, repo *repository.Repository) (int, e
 
 func versionString() string {
 	return fmt.Sprintf("%s (commit %s)", version, commit)
-}
-
-// logStubIngester is the M1.1 placeholder. Replaced by service.Service in M1.3.
-type logStubIngester struct{}
-
-func (logStubIngester) IngestLogs(_ context.Context, req *collogspb.ExportLogsServiceRequest) error {
-	logger.Info("logs received (stub)", "resource_logs", len(req.GetResourceLogs()))
-	return nil
-}
-
-type metricStubIngester struct{}
-
-func (metricStubIngester) IngestMetrics(_ context.Context, req *colmetricspb.ExportMetricsServiceRequest) error {
-	logger.Info("metrics received (stub)", "resource_metrics", len(req.GetResourceMetrics()))
-	return nil
 }
