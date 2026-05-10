@@ -75,5 +75,5 @@ func applyUserPrompt(ev domain.Event) []Op {
 }
 
 func init() {
-	updaters["claude_code.user_prompt"] = applyUserPrompt
+	updaters[domain.EventUserPrompt] = applyUserPrompt
 }

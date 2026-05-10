@@ -75,8 +75,16 @@ These apply to all three signals unless overridden per-signal (§2.4).
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | Transport protocol. One of `grpc`, `http/protobuf`, `http/json`. Default: `http/protobuf`. |
 | `OTEL_EXPORTER_OTLP_HEADERS` | `Authorization=Bearer token` | Static comma-separated `key=value` auth headers sent with every request. For gRPC only static headers are used. Dynamic header refresh requires a helper script (§5). |
 | `OTEL_EXPORTER_OTLP_CERTIFICATE` | `/path/to/ca.pem` | CA certificate for TLS verification. |
-| `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` | `/path/to/client.pem` | Client certificate for mTLS. |
-| `OTEL_EXPORTER_OTLP_CLIENT_KEY` | `/path/to/client.key` | Private key for mTLS. |
+| `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` | `/path/to/client.pem` | Client certificate for mTLS. **gRPC only.** |
+| `OTEL_EXPORTER_OTLP_CLIENT_KEY` | `/path/to/client.key` | Private key for mTLS. **gRPC only.** |
+| `CLAUDE_CODE_CLIENT_CERT` | `/path/to/client.pem` | Client certificate for mTLS. **HTTP (`http/protobuf`, `http/json`) only.** |
+| `CLAUDE_CODE_CLIENT_KEY` | `/path/to/client.key` | Private key for mTLS. **HTTP only.** |
+| `CLAUDE_CODE_CLIENT_KEY_PASSPHRASE` | `<passphrase>` | Optional passphrase for `CLAUDE_CODE_CLIENT_KEY` if the key is encrypted. **HTTP only.** |
+
+> **mTLS protocol split (important):** The generic `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` /
+> `OTEL_EXPORTER_OTLP_CLIENT_KEY` pair only takes effect for the gRPC exporter. For the
+> HTTP exporters (`http/protobuf`, `http/json`) you must use the Claude Code-specific
+> `CLAUDE_CODE_CLIENT_CERT` / `CLAUDE_CODE_CLIENT_KEY` pair instead.
 
 ### 2.4 Per-signal endpoint overrides
 
@@ -105,6 +113,8 @@ different backends.
 |----------|---------|------|-------------|
 | `OTEL_METRIC_EXPORT_INTERVAL` | `60000` | ms | How often the metrics SDK pushes accumulated metric data. Reduce to `10000` for debugging. |
 | `OTEL_LOGS_EXPORT_INTERVAL` | `5000` | ms | How often the log batch processor flushes. Already aggressive; reduce for debugging only. |
+| `OTEL_TRACES_EXPORT_INTERVAL` | `5000` | ms | Span batch export interval (beta traces only). |
+| `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE` | `delta` | — | Metrics temporality preference. Set to `cumulative` if your backend (e.g. Prometheus) expects cumulative temporality. |
 
 No documented per-signal batch size or queue depth variables; these use OTel SDK defaults.
 
@@ -131,9 +141,9 @@ unique time-series created in your metrics backend.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OTEL_METRICS_INCLUDE_SESSION_ID` | `true` (not documented as off) | Include `session.id` as a metric attribute. Set to `false` to collapse all sessions into a single series per user. |
-| `OTEL_METRICS_INCLUDE_VERSION` | `true` | Include `app.version` (Claude Code version string) as a metric attribute. |
-| `OTEL_METRICS_INCLUDE_ACCOUNT_UUID` | `true` | Include `user.account_uuid` as a metric attribute. |
+| `OTEL_METRICS_INCLUDE_SESSION_ID` | `true` | Include `session.id` as a metric attribute. Set to `false` to collapse all sessions into a single series per user. |
+| `OTEL_METRICS_INCLUDE_VERSION` | `false` | Include `app.version` (Claude Code version string) as a metric attribute. **Off by default** — set to `true` to enable. |
+| `OTEL_METRICS_INCLUDE_ACCOUNT_UUID` | `true` | Include `user.account_uuid` and `user.account_id` as metric attributes. |
 
 > **Note:** These affect only metric datapoint attributes. Log record attributes are not
 > controlled by these variables — log records always carry the full attribute set.
@@ -150,6 +160,7 @@ Only metadata (sizes, counts, identifiers) is included.
 | `OTEL_LOG_USER_PROMPTS` | `0` (off) | Include the full text of user prompts in `claude_code.user_prompt` log records. Off by default to protect sensitive developer input. |
 | `OTEL_LOG_TOOL_DETAILS` | `0` (off) | Include `tool_parameters` in `claude_code.tool_result` records: Bash commands (`bash_command`, `full_command`), MCP server and tool names, skill names, file paths, URLs, search patterns. |
 | `OTEL_LOG_TOOL_CONTENT` | `0` (off) | Include tool output content in trace spans and log records. Potentially very large. |
+| `OTEL_LOG_RAW_API_BODIES` | `0` (off) | Emit the full Anthropic Messages API request and response JSON bodies as `claude_code.api_request_body` / `claude_code.api_response_body` log events. Highest verbosity — payloads can be very large and contain prompt content. |
 
 **What is always logged (cannot be suppressed without disabling the signal):**
 
@@ -270,21 +281,21 @@ plus any metric-specific attributes listed in the "Additional Attributes" column
 
 | Metric name | OTel type | Unit | Description | Additional attributes |
 |-------------|-----------|------|-------------|----------------------|
-| `claude_code.session` | Counter | `{sessions}` | Incremented by 1 at the start of each new Claude Code session. | _(none beyond common)_ |
-| `claude_code.lines_of_code` | Counter | `{lines}` | Incremented when Claude Code adds or removes lines of code in a file. Reports net change per write operation. | `operation` (`add` \| `remove`), `language` (e.g. `TypeScript`, `Python`, `Go`, `Markdown`; `unknown` for unrecognised extensions) |
-| `claude_code.pull_requests` | Counter | `{pull_requests}` | Incremented when Claude Code creates a pull request or merge request via a shell command or MCP tool. | _(none beyond common)_ |
-| `claude_code.commits` | Counter | `{commits}` | Incremented when Claude Code creates a git commit via a shell command or MCP tool. | _(none beyond common)_ |
+| `claude_code.session.count` | Counter | `{sessions}` | Incremented by 1 at the start of each new Claude Code session. | _(none beyond common)_ |
+| `claude_code.lines_of_code.count` | Counter | `{lines}` | Incremented when Claude Code adds or removes lines of code in a file. Reports net change per write operation. | `type` (`"added"` \| `"removed"`), `language` (e.g. `TypeScript`, `Python`, `Go`, `Markdown`; `unknown` for unrecognised extensions) |
+| `claude_code.pull_request.count` | Counter | `{pull_requests}` | Incremented when Claude Code creates a pull request or merge request via a shell command or MCP tool. | _(none beyond common)_ |
+| `claude_code.commit.count` | Counter | `{commits}` | Incremented when Claude Code creates a git commit via a shell command or MCP tool. | _(none beyond common)_ |
 | `claude_code.cost.usage` | Counter | `USD` | Cumulative API cost in US dollars. Incremented after each API request by that request's cost. | `model` (e.g. `claude-opus-4-5`, `claude-sonnet-4-5`) |
-| `claude_code.token.usage` | Counter | `{tokens}` | Token consumption broken down by type and model. A separate datapoint series is emitted for each `(token_type, model)` combination. | `token_type` (`input` \| `output` \| `cache_read` \| `cache_creation`), `model` |
-| `claude_code.active_time` | Counter | `s` (seconds) | Cumulative time spent actively using Claude Code in the session, excluding idle time. Incremented during user interactions and during CLI processing (tool execution, AI response generation). | _(none beyond common)_ |
-| `claude_code.tool_decision` | Counter | `{decisions}` | Incremented each time a tool permission decision is made. | `decision` (`allow` \| `deny`), `decision_source` (see §8 tool_decision event for values) |
+| `claude_code.token.usage` | Counter | `{tokens}` | Token consumption broken down by type and model. A separate datapoint series is emitted for each `(type, model)` combination. | `type` (`"input"` \| `"output"` \| `"cacheRead"` \| `"cacheCreation"` — note camelCase), `model` |
+| `claude_code.active_time.total` | Counter | `s` (seconds) | Cumulative time spent actively using Claude Code in the session, excluding idle time. Incremented during user interactions and during CLI processing (tool execution, AI response generation). | _(none beyond common)_ |
+| `claude_code.code_edit_tool.decision` | Counter | `{decisions}` | Incremented when the user accepts or rejects an `Edit`, `Write`, or `NotebookEdit` tool invocation. **Scoped to code-edit tools only — not a generic tool permission counter.** | `tool_name` (`"Edit"` \| `"Write"` \| `"NotebookEdit"`), `decision` (`"accept"` \| `"reject"`) |
 
-> **Token type definitions:**
+> **Token type definitions** (values of the `type` attribute on `claude_code.token.usage`):
 > - `input` — Tokens in the prompt that are not served from cache (i.e., tokens after the
 >   last cache breakpoint).
 > - `output` — Tokens generated by the model in the response.
-> - `cache_read` — Tokens retrieved from the prompt cache for this request.
-> - `cache_creation` — Tokens written to the prompt cache when creating a new cache entry.
+> - `cacheRead` — Tokens retrieved from the prompt cache for this request. **Note camelCase.**
+> - `cacheCreation` — Tokens written to the prompt cache when creating a new cache entry. **Note camelCase.**
 
 ---
 
@@ -341,8 +352,8 @@ attempts are **not** logged as separate events.
 |-----------|------|-------------|
 | `prompt.id` | string (UUID) | Links to the parent user prompt. |
 | `model` | string | Model that was being called. |
-| `error_message` | string | Human-readable error description. |
-| `http_status_code` | int | HTTP status code of the final failed response (e.g. `429`, `500`, `529`). |
+| `error` | string | Human-readable error description. |
+| `status_code` | int | HTTP status code of the final failed response (e.g. `429`, `500`, `529`). Absent for non-HTTP errors such as connection failures. |
 | `duration_ms` | int | Total time spent across all retry attempts before giving up. |
 | `attempt` | int | Total number of attempts made (including the initial attempt and all retries). |
 | `request_id` | string | Anthropic API request ID, if the server returned one before failing. |
@@ -358,6 +369,12 @@ Fired when a tool invocation completes (both successful and failed executions).
 | `prompt.id` | string (UUID) | Links to the parent user prompt. |
 | `tool_use_id` | string | Unique identifier for this tool invocation. Matches the `tool_use_id` passed to PreToolUse/PostToolUse hooks. |
 | `tool_name` | string | Name of the tool (e.g. `Bash`, `Read`, `Write`, `Edit`, `mcp__server__tool`). |
+| `success` | bool | `true` if the tool executed without error, `false` otherwise. |
+| `duration_ms` | int | Wall-clock duration of the tool invocation in milliseconds. |
+| `error` | string | Human-readable error message when `success=false`. Absent on success. |
+| `error_type` | string | Error category when `success=false` (e.g. `timeout`, `permission_denied`). Absent on success. |
+| `decision_type` | string | Mirrors the `decision` value from the matching `tool_decision` event (`accept`/`reject`). |
+| `decision_source` | string | Mirrors the `source` value from the matching `tool_decision` event (`config`, `hook`, `user_permanent`, `user_temporary`, `user_abort`, `user_reject`). |
 | `tool_input_size_bytes` | int | Size in bytes of the tool's input arguments. |
 | `tool_result_size_bytes` | int | Size in bytes of the tool's output/result. |
 | `mcp_server_scope` | string | For MCP tools: the scope of the MCP server (`local`, `project`, `user`). |
@@ -373,17 +390,53 @@ Fired each time Claude Code evaluates whether a tool invocation is permitted.
 | `prompt.id` | string (UUID) | Links to the parent user prompt. |
 | `tool_use_id` | string | Matches the `tool_use_id` of the corresponding `tool_result` event. |
 | `tool_name` | string | Name of the tool for which the decision was made. |
-| `decision` | string | `allow` or `deny`. |
-| `decision_source` | string | Where the decision originated. One of: `config` (automatic, from project settings / allow rules / enterprise policy / flags — no user prompt shown), `hook` (a PreToolUse or PermissionRequest hook returned the decision), `user_permanent` (user chose "Yes, and don't ask again" — written to settings), `user_temporary` (user approved for this session only), `user_abort` (user pressed Escape or Ctrl-C), `user_reject` (user explicitly denied). |
+| `decision` | string | `accept` or `reject`. |
+| `source` | string | Where the decision originated. One of: `config` (automatic, from project settings / allow rules / enterprise policy / flags — no user prompt shown), `hook` (a PreToolUse or PermissionRequest hook returned the decision), `user_permanent` (user chose "Yes, and don't ask again" — written to settings), `user_temporary` (user approved for this session only), `user_abort` (user pressed Escape or Ctrl-C), `user_reject` (user explicitly denied). |
 
-### 8.6 Additional events (less-documented / community-observed)
+### 8.6 `claude_code.compaction`
 
-| Event name | When fired | Key attributes |
-|------------|-----------|----------------|
-| `claude_code.session_start` | Session initialization | `session.id`, `app.version`, `os.type` |
-| `claude_code.session_end` | Session teardown / process exit | `session.id`, `duration_ms`, aggregate cost/token totals |
-| `claude_code.compact` | Context compaction triggered | `prompt.id`, `tokens_before`, `tokens_after` — not formally documented |
-| `claude_code.subagent_dispatch` | Subagent spawned | `parent_session.id`, `child_session.id` — not formally documented |
+Fired when context compaction runs.
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `trigger` | string | What triggered the compaction (e.g. automatic threshold, explicit `/compact` command). |
+| `success` | bool | Whether compaction completed successfully. |
+| `duration_ms` | int | Time spent compacting. |
+| `pre_tokens` | int | Approximate token count before compaction. |
+| `post_tokens` | int | Approximate token count after compaction. |
+
+### 8.7 Other officially-documented events
+
+The following events are also defined in the official source. Each has its own dedicated
+attribute schema — consult `code.claude.com/docs/en/monitoring-usage` for full details.
+A receiver should at minimum recognise the `event.name` so unknown events can be logged
+or dispatched generically.
+
+| Event name | When fired |
+|------------|-----------|
+| `claude_code.permission_mode_changed` | User changes permission mode (e.g. `default` → `acceptEdits` → `plan` → `bypassPermissions`). |
+| `claude_code.auth` | Authentication state change (login, logout, refresh). |
+| `claude_code.mcp_server_connection` | MCP server connect / disconnect / error. |
+| `claude_code.internal_error` | Internal Claude Code error (not an API error). |
+| `claude_code.plugin_installed` | A plugin is installed. |
+| `claude_code.skill_activated` | A skill is activated/invoked. |
+| `claude_code.at_mention` | An `@`-mention reference resolved (e.g. `@file`, `@folder`). |
+| `claude_code.api_retries_exhausted` | All retries for an API request were used (the subsequent failure produces `claude_code.api_error`). |
+| `claude_code.hook_execution_start` | Hook script invocation begins. |
+| `claude_code.hook_execution_complete` | Hook script invocation finishes. |
+| `claude_code.api_request_body` | **Only when `OTEL_LOG_RAW_API_BODIES=1`.** Full Anthropic Messages API request JSON. |
+| `claude_code.api_response_body` | **Only when `OTEL_LOG_RAW_API_BODIES=1`.** Full Anthropic Messages API response JSON. |
+
+### 8.8 Community-observed events (not in official docs)
+
+The following event names have been observed in community implementations but are **not**
+listed in the official monitoring-usage reference. Treat them as best-effort — names and
+schemas may not be stable.
+
+| Event name | Notes |
+|------------|------|
+| `claude_code.session_start` / `claude_code.session_end` | Not in official docs as of this writing; session lifecycle is conveyed via the `claude_code.session.count` metric. |
+| `claude_code.subagent_dispatch` | Not in official docs; subagent activity is inferred from `query_source` on `api_request`. |
 
 > **Not natively exposed:** Per-tool latency histograms, time-to-first-token, subagent
 > counts as a dedicated metric, per-file diff sizes, MCP server latency, context window
@@ -409,8 +462,10 @@ process.
 | `user.id` | string (hashed/opaque) | Installation-scoped stable identifier. Always present. |
 | `user.email` | string | **Present only when signed in via Claude.ai OAuth.** Absent for direct API key, Bedrock, Vertex, or Foundry. |
 | `user.account_uuid` | UUID | **Present only when signed in via Claude.ai OAuth.** |
+| `user.account_id` | string | Tagged-format account ID matching the Anthropic admin APIs (e.g. `user_01BWBeN28...`). Present when authenticated. |
 | `organization.id` | UUID | **Present only when authenticated against a Team/Enterprise account.** |
 | `session.id` | UUID | Per-invocation session identifier. Changes each time `claude` is launched. |
+| `terminal.type` | string | Terminal type Claude Code is running under (e.g. `iTerm.app`, `vscode`, `cursor`, `tmux`). Detected automatically. |
 
 ### 9.1 Attribute presence matrix
 

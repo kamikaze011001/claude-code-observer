@@ -145,8 +145,8 @@ func TestParse_APIError_Synth(t *testing.T) {
 			kvStr("session.id", "s"),
 			kvStr("prompt.id", "p"),
 			kvStr("model", "claude-opus-4-7"),
-			kvStr("error_message", "rate limit"),
-			kvInt("http_status_code", 429),
+			kvStr("error", "rate limit"),
+			kvInt("status_code", 429),
 			kvInt("attempt", 3),
 		},
 	}
@@ -154,11 +154,11 @@ func TestParse_APIError_Synth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ev.Attrs["error_message"] != "rate limit" {
-		t.Errorf("error_message = %v", ev.Attrs["error_message"])
+	if ev.Attrs["error"] != "rate limit" {
+		t.Errorf("error = %v", ev.Attrs["error"])
 	}
-	if ev.Attrs["http_status_code"] != int64(429) {
-		t.Errorf("http_status_code = %v", ev.Attrs["http_status_code"])
+	if ev.Attrs["status_code"] != int64(429) {
+		t.Errorf("status_code = %v", ev.Attrs["status_code"])
 	}
 }
 
@@ -201,5 +201,35 @@ func TestParse_SubagentDispatch_Synth(t *testing.T) {
 	}
 	if ev.Attrs["child_session.id"] != "child-1" {
 		t.Errorf("child_session.id = %v", ev.Attrs["child_session.id"])
+	}
+}
+
+func TestParse_PropagatesNewResourceAttrs(t *testing.T) {
+	rec := &logspb.LogRecord{
+		TimeUnixNano: 10,
+		Attributes: []*commonpb.KeyValue{
+			kvStr("event.name", "claude_code.user_prompt"),
+			kvStr("session.id", "s1"),
+		},
+	}
+	res := &resourcepb.Resource{
+		Attributes: []*commonpb.KeyValue{
+			kvStr("user.account_id", "user_01ABC"),
+			kvStr("user.account_uuid", "11111111-2222-3333-4444-555555555555"),
+			kvStr("terminal.type", "iTerm.app"),
+		},
+	}
+	ev, err := Parse(rec, res)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if ev.Attrs["user.account_id"] != "user_01ABC" {
+		t.Errorf("user.account_id = %v, want user_01ABC", ev.Attrs["user.account_id"])
+	}
+	if ev.Attrs["user.account_uuid"] != "11111111-2222-3333-4444-555555555555" {
+		t.Errorf("user.account_uuid = %v", ev.Attrs["user.account_uuid"])
+	}
+	if ev.Attrs["terminal.type"] != "iTerm.app" {
+		t.Errorf("terminal.type = %v, want iTerm.app", ev.Attrs["terminal.type"])
 	}
 }

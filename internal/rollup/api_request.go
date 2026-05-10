@@ -35,6 +35,9 @@ func promptCounterArgs(promptID, sessionID string, ts int64, c promptCounters) [
 func applyAPIRequest(ev domain.Event) []Op {
 	in := attrInt64(ev.Attrs, "input_tokens")
 	out := attrInt64(ev.Attrs, "output_tokens")
+	// Log-event attrs use snake_case (cache_read_tokens, cache_creation_tokens).
+	// The claude_code.token.usage metric uses attribute `type` with camelCase
+	// values (cacheRead, cacheCreation). Do not unify — see docs/CLAUDE-CODE-OTEL.md §7.1 / §8.2.
 	cr := attrInt64(ev.Attrs, "cache_read_tokens")
 	cc := attrInt64(ev.Attrs, "cache_creation_tokens")
 	cost := attrFloat64(ev.Attrs, "cost_usd")
@@ -72,5 +75,5 @@ func applyAPIRequest(ev domain.Event) []Op {
 }
 
 func init() {
-	updaters["claude_code.api_request"] = applyAPIRequest
+	updaters[domain.EventAPIRequest] = applyAPIRequest
 }

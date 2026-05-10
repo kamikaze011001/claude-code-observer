@@ -28,7 +28,10 @@ var resourceAttrAllowlist = map[string]struct{}{
 	"host.arch":       {},
 	"user.id":         {},
 	"user.email":      {},
-	"organization.id": {},
+	"organization.id":   {},
+	"user.account_id":   {}, // §9 of docs/CLAUDE-CODE-OTEL.md
+	"user.account_uuid": {}, // §9 of docs/CLAUDE-CODE-OTEL.md
+	"terminal.type":     {}, // §9 of docs/CLAUDE-CODE-OTEL.md
 }
 
 // Parse converts an OTLP LogRecord (plus its enclosing Resource) into a

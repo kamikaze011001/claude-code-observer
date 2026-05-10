@@ -45,6 +45,6 @@ func applySessionEnd(ev domain.Event) []Op {
 }
 
 func init() {
-	updaters["claude_code.session_start"] = applySessionStart
-	updaters["claude_code.session_end"] = applySessionEnd
+	updaters[domain.EventSessionStart] = applySessionStart
+	updaters[domain.EventSessionEnd] = applySessionEnd
 }

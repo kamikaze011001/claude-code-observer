@@ -1,38 +1,54 @@
 # claude-code-observer
 
-A golang CLI project that monitor claude code usage
+A golang CLI project that monitors Claude Code usage.
 
-**Stack:** Go 1.23 + chi, SQLite
+**Stack:** Go 1.25 + cobra (CLI) + bubbletea/lipgloss (TUI) + SQLite. Single binary: `cco`.
+
+**What it is:** A local OTLP/gRPC receiver (`127.0.0.1:4317`) that ingests Claude Code telemetry into SQLite under `$CCO_HOME` (default `~/.claude-code-observer/`) and renders it in a Bubble Tea TUI. No HTTP server, no cloud.
 
 ## Commands
 
 ```bash
-go run ./cmd/app        # localhost:8080
-go test ./...           # Run all tests
-go test -cover ./...    # Coverage report
-go build -o bin/app     # Build binary
-go vet ./...            # Lint
-golangci-lint run       # Full lint (install: brew install golangci-lint)
+make build              # → bin/claude-code-observer (with version ldflags)
+make test               # go test ./...
+make test-cover         # coverage report
+make vet                # go vet ./...
+make lint               # golangci-lint run (install: brew install golangci-lint)
+make run                # build + execute (opens TUI)
+
+# CLI surface (binary is `cco` when installed; ./bin/claude-code-observer locally):
+cco                     # Open TUI dashboard (default)
+cco serve               # Run OTLP/gRPC receiver in foreground
+cco init                # Wire current project's .claude/settings.json to the daemon
+cco rebuild             # Rebuild aggregates from raw events
+cco version             # Print version + commit
+
+# All commands accept --home <dir> (overrides $CCO_HOME) and --log-level debug|info|warn|error.
 ```
 
 ## Verification
 
 After every change, run in order:
-1. `go vet ./...` — fix vet issues first
-2. `go test ./...` — fix failing tests
-3. `go build -o bin/app` — confirm it compiles
+1. `make vet` — fix vet issues first
+2. `make test` — fix failing tests
+3. `make build` — confirm it compiles
 
 ## Project Structure
 
 ```
-cmd/app/                # Entry point (main.go)
+cmd/app/                # Entry point (main.go) + cobra subcommands (serve, init, rebuild, version)
 internal/
-├── handler/            # HTTP handlers (thin — delegate to services)
+├── domain/             # Types, interfaces, value objects (event, session, rollup)
+├── receiver/           # OTLP/gRPC server — accepts metrics + logs from Claude Code
+├── eventparser/        # Decode OTLP records → domain events (see docs/CLAUDE-CODE-OTEL.md)
+├── repository/         # SQLite access (database/sql + parameterized queries only)
 ├── service/            # Business logic
-├── repository/         # DB access layer (SQLite)
-└── domain/             # Types, interfaces, value objects
-pkg/                    # Public packages (if any)
-docs/                   # Architecture, data models, decisions
+├── rollup/             # Aggregation pass (raw events → session/cost/tool rollups)
+├── retention/          # Old-event pruning
+├── scheduler/          # Periodic jobs (rollup, retention)
+├── projectinit/        # `cco init` — writes OTel env vars into .claude/settings.json
+└── tui/                # Bubble Tea views, models, styles
+docs/                   # Architecture, data models, OTel reference, decisions, roadmap
 ```
 
 ## Conventions
@@ -46,7 +62,7 @@ docs/                   # Architecture, data models, decisions
 
 - Don't panic in library code — return errors
 - Don't use `interface{}` (`any`) without a comment explaining why
-- Don't put business logic in handlers — use `internal/service/`
+- Don't put business logic in `cmd/app/` subcommands or `internal/receiver/` — use `internal/service/`
 - Don't ignore errors — handle or explicitly discard with `_` + comment
 
 ## Security
@@ -55,7 +71,7 @@ docs/                   # Architecture, data models, decisions
 
 - **NEVER** hardcode secrets, tokens, API keys, or passwords
 - **NEVER** commit `.env` or config files with credentials
-- **ALWAYS** validate user input at handler boundary
+- **ALWAYS** validate input at boundaries — OTLP receiver, CLI flags, parsed `.claude/settings.json`
 - **ALWAYS** parameterized queries — use `database/sql` with `?` placeholders, no string concat
 
 ## SOT References
@@ -64,9 +80,13 @@ docs/                   # Architecture, data models, decisions
 |----------|----------|---------|
 | Architecture | docs/ARCHITECTURE.md | System design, layer boundaries |
 | Data Models | docs/DATA-MODELS.md | Schema & entity relationships |
+| OTel reference | docs/CLAUDE-CODE-OTEL.md | What Claude Code emits — metric/event names, attributes, gotchas. **Load-bearing for `receiver/` and `eventparser/` work.** |
+| Roadmap | docs/ROADMAP.md | Milestone tracker |
+| Context | docs/CONTEXT.md | Project background |
 | Decision Log | docs/decisions/ | ADRs + micro-decisions |
 | Security Rules | .claude/rules/security.md | Full security checklist |
 | AI Permissions | .claude/settings.json | Allow/deny/ask rules |
+| User-facing intro | README.md | Install / usage / troubleshooting for end users |
 
 ## AI Rules
 
