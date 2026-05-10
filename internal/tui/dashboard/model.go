@@ -69,9 +69,6 @@ func (m *Model) Update(msg tea.Msg) (app.View, tea.Cmd) {
 	return m, nil
 }
 
-// View renders the body content. Temporary stub — replaced in Task 9.
-func (m *Model) View(width, height int) string { return "" }
-
 func (m *Model) Title() string { return "DASHBOARD" }
 
 func (m *Model) ShortHelp() []key.Binding {
