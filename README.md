@@ -38,7 +38,63 @@
 - Unattended daemon — launchd plist + systemd user unit shipped.
 - Idempotent project setup — `cco init` is safe to re-run.
 
-<!-- INSTALL -->
+## Install
+
+**Stack:** Go 1.25 · gRPC · SQLite (modernc) · Bubble Tea TUI · cobra
+
+### 1. Build
+
+```bash
+git clone https://github.com/kamikaze011001/claude-code-observer.git
+cd claude-code-observer
+mkdir -p ~/.claude-code-observer/bin ~/.claude-code-observer/logs
+go build -o ~/.claude-code-observer/bin/cco ./cmd/app
+```
+
+Add `~/.claude-code-observer/bin` to your `PATH` to run `cco` from anywhere.
+
+### 2. Install the daemon
+
+<details open>
+<summary><strong>macOS (launchd)</strong></summary>
+
+```bash
+sed "s|__HOME__|$HOME|g" scripts/com.claude-code-observer.plist \
+  > ~/Library/LaunchAgents/com.claude-code-observer.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.claude-code-observer.plist
+launchctl kickstart gui/$(id -u)/com.claude-code-observer
+```
+
+</details>
+
+<details>
+<summary><strong>Linux (systemd user unit)</strong></summary>
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp scripts/claude-code-observer.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now claude-code-observer
+```
+
+</details>
+
+The daemon listens on `127.0.0.1:4317` and writes logs to `~/.claude-code-observer/logs/cco.log`.
+
+### 3. Configure a project
+
+```bash
+cd path/to/your/project
+cco init
+```
+
+`cco init` writes seven OTel env vars under `env` in `.claude/settings.json` and probes the daemon. Existing keys (`model`, `theme`, `hooks`, etc.) are preserved.
+
+Run any `claude` command in the project — events flow within ~20 seconds — then open the dashboard:
+
+```bash
+cco
+```
 
 <!-- USAGE -->
 
