@@ -126,7 +126,14 @@ Run `cco init --print` to preview the rendered file without writing. Run `cco in
 
 See [docs/CLAUDE-CODE-OTEL.md](docs/CLAUDE-CODE-OTEL.md) for what Claude Code emits, and the [Phase 4 install ergonomics spec](docs/superpowers/specs/2026-05-10-phase-4-install-ergonomics-design.md) for the rationale of each key.
 
-<!-- ARCHITECTURE -->
+## Architecture
+
+Three components: a gRPC OTLP receiver on `127.0.0.1:4317` (`cmd/app/serve.go`), a SQLite store under `~/.claude-code-observer/cco.sqlite`, and a Bubble Tea TUI. The receiver writes raw events; an aggregation pass (`cco rebuild` or the live aggregator) produces session, cost, and tool-call rollups consumed by the TUI.
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — layer boundaries
+- [docs/DATA-MODELS.md](docs/DATA-MODELS.md) — schema
+- [docs/decisions/](docs/decisions/) — ADRs
+- [docs/ROADMAP.md](docs/ROADMAP.md) — milestone tracker
 
 <!-- TROUBLESHOOTING -->
 
