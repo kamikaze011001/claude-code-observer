@@ -89,3 +89,70 @@ func TestParse_UnknownEventNameStoredVerbatim(t *testing.T) {
 		t.Fatalf("attrs missing custom_field: %#v", got.Attrs)
 	}
 }
+
+func TestParse_APIError_Synth(t *testing.T) {
+	rec := &logspb.LogRecord{
+		TimeUnixNano: 9,
+		Attributes: []*commonpb.KeyValue{
+			kvStr("event.name", "claude_code.api_error"),
+			kvStr("session.id", "s"),
+			kvStr("prompt.id", "p"),
+			kvStr("model", "claude-opus-4-7"),
+			kvStr("error_message", "rate limit"),
+			kvInt("http_status_code", 429),
+			kvInt("attempt", 3),
+		},
+	}
+	ev, err := Parse(rec, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.Attrs["error_message"] != "rate limit" {
+		t.Errorf("error_message = %v", ev.Attrs["error_message"])
+	}
+	if ev.Attrs["http_status_code"] != int64(429) {
+		t.Errorf("http_status_code = %v", ev.Attrs["http_status_code"])
+	}
+}
+
+func TestParse_Compact_Synth(t *testing.T) {
+	rec := &logspb.LogRecord{
+		TimeUnixNano: 1,
+		Attributes: []*commonpb.KeyValue{
+			kvStr("event.name", "claude_code.compact"),
+			kvStr("session.id", "s"),
+			kvStr("prompt.id", "p"),
+			kvInt("tokens_before", 100000),
+			kvInt("tokens_after", 50000),
+		},
+	}
+	ev, err := Parse(rec, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.EventName != "claude_code.compact" {
+		t.Fatalf("event_name = %q", ev.EventName)
+	}
+	if ev.Attrs["tokens_before"] != int64(100000) {
+		t.Errorf("tokens_before = %v", ev.Attrs["tokens_before"])
+	}
+}
+
+func TestParse_SubagentDispatch_Synth(t *testing.T) {
+	rec := &logspb.LogRecord{
+		TimeUnixNano: 1,
+		Attributes: []*commonpb.KeyValue{
+			kvStr("event.name", "claude_code.subagent_dispatch"),
+			kvStr("session.id", "parent-1"),
+			kvStr("parent_session.id", "parent-1"),
+			kvStr("child_session.id", "child-1"),
+		},
+	}
+	ev, err := Parse(rec, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.Attrs["child_session.id"] != "child-1" {
+		t.Errorf("child_session.id = %v", ev.Attrs["child_session.id"])
+	}
+}
