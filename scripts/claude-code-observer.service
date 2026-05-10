@@ -1,0 +1,15 @@
+[Unit]
+Description=Claude Code Observer daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.claude-code-observer/bin/cco serve
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=%h/.claude-code-observer
+StandardOutput=append:%h/.claude-code-observer/logs/cco.log
+StandardError=append:%h/.claude-code-observer/logs/cco.log
+
+[Install]
+WantedBy=default.target
