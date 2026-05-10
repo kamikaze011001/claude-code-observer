@@ -1,1 +1,4 @@
--- placeholder
+-- Sentinel file. The Go embed directive `//go:embed migrations/*.sql`
+-- requires at least one .sql file at compile time. Files without a leading
+-- numeric version (NNNN_) are skipped by the migration runner, so this is
+-- harmless. Safe to delete once at least one numbered migration is checked in.

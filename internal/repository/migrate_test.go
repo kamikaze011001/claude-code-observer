@@ -120,5 +120,51 @@ func TestRunMigrations_OrdersByVersion(t *testing.T) {
 	}
 }
 
-// satisfy linter — io/fs is imported via the embedded test for Task 10.
-var _ = fs.ValidPath
+func TestRunMigrations_EmbeddedInitial(t *testing.T) {
+	db := openMemory(t)
+	sub, err := fs.Sub(migrationsFS, ".")
+	if err != nil {
+		t.Fatalf("fs.Sub: %v", err)
+	}
+	if err := runMigrations(db, sub); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	var v int
+	if err := db.QueryRow("SELECT MAX(version) FROM schema_version").Scan(&v); err != nil {
+		t.Fatalf("schema_version: %v", err)
+	}
+	if v != 1 {
+		t.Errorf("version = %d, want 1", v)
+	}
+
+	for _, table := range []string{"events", "sessions", "prompts", "metric_snapshots"} {
+		var n int
+		err := db.QueryRow(
+			`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table,
+		).Scan(&n)
+		if err != nil {
+			t.Fatalf("check %s: %v", table, err)
+		}
+		if n != 1 {
+			t.Errorf("table %s: count=%d, want 1", table, n)
+		}
+	}
+
+	wantIndexes := []string{
+		"idx_events_session_ts", "idx_events_prompt", "idx_events_name_ts",
+		"idx_sessions_started", "idx_sessions_project_started",
+		"idx_prompts_session_started",
+	}
+	for _, ix := range wantIndexes {
+		var n int
+		err := db.QueryRow(
+			`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?`, ix,
+		).Scan(&n)
+		if err != nil {
+			t.Fatalf("check %s: %v", ix, err)
+		}
+		if n != 1 {
+			t.Errorf("index %s: count=%d, want 1", ix, n)
+		}
+	}
+}
