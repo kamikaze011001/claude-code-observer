@@ -1,6 +1,11 @@
 package scheduler
 
 import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -67,4 +72,85 @@ func TestFakeClock_TickerDoesNotFireBelowInterval(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 		// good
 	}
+}
+
+func TestRun_CallsFnEveryTick(t *testing.T) {
+	clock := NewFakeClock(time.Unix(0, 0))
+	var calls int32
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		Run(ctx, clock, 1*time.Second, "test", silentLogger(), func(context.Context) error {
+			atomic.AddInt32(&calls, 1)
+			return nil
+		})
+		close(done)
+	}()
+
+	// allow Run to register its ticker
+	time.Sleep(10 * time.Millisecond)
+	clock.Advance(1 * time.Second)
+	time.Sleep(10 * time.Millisecond)
+	clock.Advance(1 * time.Second)
+	time.Sleep(10 * time.Millisecond)
+
+	cancel()
+	<-done
+
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("calls = %d, want 2", got)
+	}
+}
+
+func TestRun_LogsAndContinuesOnFnError(t *testing.T) {
+	clock := NewFakeClock(time.Unix(0, 0))
+	var calls int32
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		Run(ctx, clock, 1*time.Second, "test", silentLogger(), func(context.Context) error {
+			atomic.AddInt32(&calls, 1)
+			return errors.New("boom")
+		})
+		close(done)
+	}()
+	time.Sleep(10 * time.Millisecond)
+	clock.Advance(1 * time.Second)
+	time.Sleep(10 * time.Millisecond)
+	clock.Advance(1 * time.Second)
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	<-done
+
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("calls = %d, want 2 (loop should not stop on error)", got)
+	}
+}
+
+func TestRun_ReturnsOnContextCancel(t *testing.T) {
+	clock := NewFakeClock(time.Unix(0, 0))
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan struct{})
+	go func() {
+		Run(ctx, clock, 1*time.Second, "test", silentLogger(), func(context.Context) error { return nil })
+		close(done)
+	}()
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+		// good
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Run did not return after ctx cancel")
+	}
+}
+
+func silentLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
