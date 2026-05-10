@@ -266,7 +266,7 @@ From Session Detail, Enter on a prompt boundary opens Prompt Detail: cost, token
   - existing complete settings (no-op)
   - existing partial settings (merge)
   - conflicting settings (prompts; `--force` overrides)
-- Coverage ≥ 90% on `internal/init/`
+- Coverage ≥ 90% on `internal/projectinit/`
 
 ### M4.2 — launchd plist + systemd unit + README install section
 

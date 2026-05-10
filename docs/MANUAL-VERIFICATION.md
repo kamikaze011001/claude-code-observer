@@ -50,3 +50,36 @@ Prereqs: M3.1 prereqs + at least 3 sessions in the DB.
 - [ ] **Tool calls and api requests render.** API REQUESTS section lists model + cost; TOOL CALLS section lists tool name + duration; failed tool calls show `✗`.
 - [ ] **Back walks the chain.** `b` returns to Session Detail; another `b` returns to Sessions list; another `b` returns to Dashboard.
 - [ ] **Pruned prompt.** Drill into a session whose prompt has since been deleted (or test against a manually-DELETEd row): expect the body to render `prompt not found — it may have been pruned` and no crash.
+
+## Phase 4 — Install Ergonomics
+
+### M4.1: cco init
+
+- [ ] In an empty temp dir, `cco init --force` creates `.claude/settings.json` containing all 7 owned keys.
+- [ ] `OTEL_RESOURCE_ATTRIBUTES` value contains `project.name=<dirname>`.
+- [ ] Re-running `cco init --force` is a no-op (file mtime updates but content is byte-identical via `diff`).
+- [ ] In a dir with `.claude/settings.json` containing `{"model":"opus","env":{"MY_VAR":"42"}}`, `cco init --force` preserves both keys.
+- [ ] In a dir where an owned key conflicts, plain `cco init` (no flags) prints the conflict, prompts, and respects y/N.
+- [ ] `cco init --print` writes nothing to disk; renders valid JSON to stdout.
+- [ ] With daemon stopped: output ends with `✗ daemon not reachable` and the hint lines.
+- [ ] With daemon running: output ends with `✓ daemon reachable at 127.0.0.1:4317`.
+
+### M4.2: Service files (macOS)
+
+- [ ] After `launchctl bootstrap`, `launchctl print gui/$(id -u)/com.claude-code-observer` shows the service running.
+- [ ] Trigger a Claude Code prompt — TUI dashboard updates within 20–30 s.
+- [ ] Logout / login — daemon still running.
+- [ ] `kill -9 <pid>` — launchd restarts it within 10 s.
+- [ ] `launchctl kill TERM gui/$(id -u)/com.claude-code-observer` followed by `launchctl bootout` — clean shutdown, file removed, no zombie.
+
+### M4.2: Service files (Linux)
+
+- [ ] After `systemctl --user enable --now`, `systemctl --user status claude-code-observer` shows `active (running)`.
+- [ ] Trigger a Claude Code prompt — TUI dashboard updates within 20–30 s.
+- [ ] User session restart — daemon still running.
+- [ ] `kill -9 <pid>` — systemd restarts it within 10 s (RestartSec=5).
+- [ ] Disable + remove — clean shutdown, file removed.
+
+### M4.2: README dry-run
+
+- [ ] On a fresh user account (or a clean VM), follow README §Install end-to-end without help. Reach the dashboard with at least one populated session in under 5 minutes.
