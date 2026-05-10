@@ -72,5 +72,5 @@ func applyAPIRequest(ev domain.Event) []Op {
 }
 
 func init() {
-	updaters["claude_code.api_request"] = applyAPIRequest
+	updaters[domain.EventAPIRequest] = applyAPIRequest
 }

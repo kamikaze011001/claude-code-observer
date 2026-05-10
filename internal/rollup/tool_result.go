@@ -18,5 +18,5 @@ func applyToolResult(ev domain.Event) []Op {
 }
 
 func init() {
-	updaters["claude_code.tool_result"] = applyToolResult
+	updaters[domain.EventToolResult] = applyToolResult
 }

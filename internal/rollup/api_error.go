@@ -25,5 +25,5 @@ func applyAPIError(ev domain.Event) []Op {
 }
 
 func init() {
-	updaters["claude_code.api_error"] = applyAPIError
+	updaters[domain.EventAPIError] = applyAPIError
 }
