@@ -7,7 +7,7 @@ import (
 )
 
 func TestApply_UnknownEventNameReturnsNil(t *testing.T) {
-	ops := Apply(domain.Event{EventName: "claude_code.something_we_dont_handle"})
+	ops := Apply(domain.Event{EventName: "something_we_dont_handle"})
 	if ops != nil {
 		t.Fatalf("expected nil ops for unknown event, got %d ops", len(ops))
 	}

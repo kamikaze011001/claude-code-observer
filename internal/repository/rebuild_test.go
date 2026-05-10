@@ -13,13 +13,13 @@ func TestRebuildRollups_MatchesLiveIngest(t *testing.T) {
 	ctx := context.Background()
 
 	events := []domain.Event{
-		{TS: 100, SessionID: "s1", EventName: "claude_code.session_start",
+		{TS: 100, SessionID: "s1", EventName: "session_start",
 			Attrs: map[string]any{"project.name": "demo"}},
-		{TS: 200, SessionID: "s1", PromptID: "p1", EventName: "claude_code.user_prompt",
+		{TS: 200, SessionID: "s1", PromptID: "p1", EventName: "user_prompt",
 			Attrs: map[string]any{"prompt_length": float64(10)}},
-		{TS: 300, SessionID: "s1", PromptID: "p1", EventName: "claude_code.api_request",
+		{TS: 300, SessionID: "s1", PromptID: "p1", EventName: "api_request",
 			Attrs: map[string]any{"input_tokens": float64(50), "cost_usd": 0.01, "query_source": "main"}},
-		{TS: 400, SessionID: "s1", PromptID: "p1", EventName: "claude_code.tool_result"},
+		{TS: 400, SessionID: "s1", PromptID: "p1", EventName: "tool_result"},
 	}
 
 	if err := repo.InsertEventsAndApplyRollups(ctx, events); err != nil {
@@ -52,7 +52,7 @@ func TestRebuildRollups_MatchesLiveIngest(t *testing.T) {
 	var truth float64
 	if err := repo.db.QueryRow(`
 		SELECT COALESCE(SUM(json_extract(attrs, '$.cost_usd')), 0)
-		FROM events WHERE event_name = 'claude_code.api_request'`).Scan(&truth); err != nil {
+		FROM events WHERE event_name = 'api_request'`).Scan(&truth); err != nil {
 		t.Fatal(err)
 	}
 	var sessTotal float64
@@ -69,8 +69,8 @@ func TestRebuildRollups_IsIdempotent(t *testing.T) {
 	defer repo.Close()
 	ctx := context.Background()
 	events := []domain.Event{
-		{TS: 100, SessionID: "s1", EventName: "claude_code.session_start"},
-		{TS: 200, SessionID: "s1", PromptID: "p1", EventName: "claude_code.user_prompt"},
+		{TS: 100, SessionID: "s1", EventName: "session_start"},
+		{TS: 200, SessionID: "s1", PromptID: "p1", EventName: "user_prompt"},
 	}
 	if err := repo.InsertEventsAndApplyRollups(ctx, events); err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestRebuildRollups_OutOfOrderEventInEventsTable(t *testing.T) {
 	// Seed events table directly with an api_request that has no prior session_start.
 	_, err := repo.db.ExecContext(ctx,
 		`INSERT INTO events (ts, session_id, prompt_id, event_name, attrs) VALUES (?, ?, ?, ?, ?)`,
-		int64(5000), "s9", "p9", "claude_code.api_request",
+		int64(5000), "s9", "p9", "api_request",
 		`{"input_tokens":7,"query_source":"main"}`)
 	if err != nil {
 		t.Fatalf("seed: %v", err)

@@ -11,7 +11,7 @@ func TestApplySessionStart_EmitsMetadataUpsert(t *testing.T) {
 	ev := domain.Event{
 		TS:        1000,
 		SessionID: "s1",
-		EventName: "claude_code.session_start",
+		EventName: "session_start",
 		Attrs: map[string]any{
 			"project.name": "demo",
 			"project.cwd":  "/tmp/demo",
@@ -44,7 +44,7 @@ func TestApplySessionStart_MissingMetadataPassesEmptyStrings(t *testing.T) {
 	ev := domain.Event{
 		TS:        500,
 		SessionID: "s2",
-		EventName: "claude_code.session_start",
+		EventName: "session_start",
 		Attrs:     map[string]any{},
 	}
 	ops := Apply(ev)
@@ -63,7 +63,7 @@ func TestApplySessionEnd_EmitsUpdateWithEndedAt(t *testing.T) {
 	ev := domain.Event{
 		TS:        2000,
 		SessionID: "s1",
-		EventName: "claude_code.session_end",
+		EventName: "session_end",
 	}
 	ops := Apply(ev)
 	if len(ops) != 1 {

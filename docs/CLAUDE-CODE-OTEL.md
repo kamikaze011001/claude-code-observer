@@ -157,10 +157,10 @@ Only metadata (sizes, counts, identifiers) is included.
 
 | Variable | Default | What it enables when set to `1` |
 |----------|---------|----------------------------------|
-| `OTEL_LOG_USER_PROMPTS` | `0` (off) | Include the full text of user prompts in `claude_code.user_prompt` log records. Off by default to protect sensitive developer input. |
-| `OTEL_LOG_TOOL_DETAILS` | `0` (off) | Include `tool_parameters` in `claude_code.tool_result` records: Bash commands (`bash_command`, `full_command`), MCP server and tool names, skill names, file paths, URLs, search patterns. |
+| `OTEL_LOG_USER_PROMPTS` | `0` (off) | Include the full text of user prompts in `user_prompt` log records. Off by default to protect sensitive developer input. |
+| `OTEL_LOG_TOOL_DETAILS` | `0` (off) | Include `tool_parameters` in `tool_result` records: Bash commands (`bash_command`, `full_command`), MCP server and tool names, skill names, file paths, URLs, search patterns. |
 | `OTEL_LOG_TOOL_CONTENT` | `0` (off) | Include tool output content in trace spans and log records. Potentially very large. |
-| `OTEL_LOG_RAW_API_BODIES` | `0` (off) | Emit the full Anthropic Messages API request and response JSON bodies as `claude_code.api_request_body` / `claude_code.api_response_body` log events. Highest verbosity — payloads can be very large and contain prompt content. |
+| `OTEL_LOG_RAW_API_BODIES` | `0` (off) | Emit the full Anthropic Messages API request and response JSON bodies as `api_request_body` / `api_response_body` log events. Highest verbosity — payloads can be very large and contain prompt content. |
 
 **What is always logged (cannot be suppressed without disabling the signal):**
 
@@ -301,6 +301,8 @@ plus any metric-specific attributes listed in the "Additional Attributes" column
 
 ## 8. Log-Event Catalogue
 
+> **Wire format note:** Claude Code emits these events with **bare** names on `LogRecord.event_name` — e.g. `user_prompt`, not `claude_code.user_prompt`. The `claude_code.` namespace is reserved for metric names (§7). Receivers should match on bare names; reference implementations may also strip a leading `claude_code.` defensively to survive a future re-prefix.
+
 Claude Code exports events as **OTel log records** via the OTLP Logs protocol. The
 `event.name` attribute (or the log record body/name field depending on the collector)
 identifies the event type.
@@ -311,7 +313,7 @@ decisions that belong to one prompt.
 
 All events also carry the [common datapoint attributes](#10-common-datapoint-attributes-on-every-signal).
 
-### 8.1 `claude_code.user_prompt`
+### 8.1 `user_prompt`
 
 Fired when a user submits a prompt (presses Enter in the REPL, or triggers a slash command).
 
@@ -324,7 +326,7 @@ Fired when a user submits a prompt (presses Enter in the REPL, or triggers a sla
 | `command_source` | string | Origin of the command: `builtin`, `custom`, or `mcp`. |
 | `event.sequence` | int | Monotonically increasing counter within the session, for ordering events. |
 
-### 8.2 `claude_code.api_request`
+### 8.2 `api_request`
 
 Fired after each successful call to the Claude API (after streaming completes).
 
@@ -343,7 +345,7 @@ Fired after each successful call to the Claude API (after streaming completes).
 | `speed` | string | `fast` when the request used fast mode (extended thinking shortcut); absent otherwise. |
 | `effort` | string | Effort level applied when the model supports it: `low`, `medium`, `high`, `xhigh`, or `max`. Absent when the model does not support effort levels. |
 
-### 8.3 `claude_code.api_error`
+### 8.3 `api_error`
 
 Fired when an API request fails after all internal retries are exhausted. Intermediate retry
 attempts are **not** logged as separate events.
@@ -360,7 +362,7 @@ attempts are **not** logged as separate events.
 | `query_source` | string | Same as `api_request`: `main`, `subagent`, or `auxiliary`. |
 | `effort` | string | Effort level, if applicable. |
 
-### 8.4 `claude_code.tool_result`
+### 8.4 `tool_result`
 
 Fired when a tool invocation completes (both successful and failed executions).
 
@@ -381,7 +383,7 @@ Fired when a tool invocation completes (both successful and failed executions).
 | `tool_parameters` | string (JSON) | **Only present when `OTEL_LOG_TOOL_DETAILS=1`.** For Bash: includes `bash_command`, `full_command`, `timeout`, `description`, `dangerouslyDisableSandbox`, `git_commit_id` (the commit SHA when a git commit command succeeds). For MCP tools: includes `mcp_server_name`, `mcp_tool_name`. For skills: includes skill name. |
 | `tool_input` | string | **Only present when `OTEL_LOG_TOOL_DETAILS=1`.** File paths, URLs, search patterns, and other arguments. |
 
-### 8.5 `claude_code.tool_decision`
+### 8.5 `tool_decision`
 
 Fired each time Claude Code evaluates whether a tool invocation is permitted.
 
@@ -393,7 +395,7 @@ Fired each time Claude Code evaluates whether a tool invocation is permitted.
 | `decision` | string | `accept` or `reject`. |
 | `source` | string | Where the decision originated. One of: `config` (automatic, from project settings / allow rules / enterprise policy / flags — no user prompt shown), `hook` (a PreToolUse or PermissionRequest hook returned the decision), `user_permanent` (user chose "Yes, and don't ask again" — written to settings), `user_temporary` (user approved for this session only), `user_abort` (user pressed Escape or Ctrl-C), `user_reject` (user explicitly denied). |
 
-### 8.6 `claude_code.compaction`
+### 8.6 `compaction`
 
 Fired when context compaction runs.
 
@@ -414,18 +416,18 @@ or dispatched generically.
 
 | Event name | When fired |
 |------------|-----------|
-| `claude_code.permission_mode_changed` | User changes permission mode (e.g. `default` → `acceptEdits` → `plan` → `bypassPermissions`). |
-| `claude_code.auth` | Authentication state change (login, logout, refresh). |
-| `claude_code.mcp_server_connection` | MCP server connect / disconnect / error. |
-| `claude_code.internal_error` | Internal Claude Code error (not an API error). |
-| `claude_code.plugin_installed` | A plugin is installed. |
-| `claude_code.skill_activated` | A skill is activated/invoked. |
-| `claude_code.at_mention` | An `@`-mention reference resolved (e.g. `@file`, `@folder`). |
-| `claude_code.api_retries_exhausted` | All retries for an API request were used (the subsequent failure produces `claude_code.api_error`). |
-| `claude_code.hook_execution_start` | Hook script invocation begins. |
-| `claude_code.hook_execution_complete` | Hook script invocation finishes. |
-| `claude_code.api_request_body` | **Only when `OTEL_LOG_RAW_API_BODIES=1`.** Full Anthropic Messages API request JSON. |
-| `claude_code.api_response_body` | **Only when `OTEL_LOG_RAW_API_BODIES=1`.** Full Anthropic Messages API response JSON. |
+| `permission_mode_changed` | User changes permission mode (e.g. `default` → `acceptEdits` → `plan` → `bypassPermissions`). |
+| `auth` | Authentication state change (login, logout, refresh). |
+| `mcp_server_connection` | MCP server connect / disconnect / error. |
+| `internal_error` | Internal Claude Code error (not an API error). |
+| `plugin_installed` | A plugin is installed. |
+| `skill_activated` | A skill is activated/invoked. |
+| `at_mention` | An `@`-mention reference resolved (e.g. `@file`, `@folder`). |
+| `api_retries_exhausted` | All retries for an API request were used (the subsequent failure produces `api_error`). |
+| `hook_execution_start` | Hook script invocation begins. |
+| `hook_execution_complete` | Hook script invocation finishes. |
+| `api_request_body` | **Only when `OTEL_LOG_RAW_API_BODIES=1`.** Full Anthropic Messages API request JSON. |
+| `api_response_body` | **Only when `OTEL_LOG_RAW_API_BODIES=1`.** Full Anthropic Messages API response JSON. |
 
 ### 8.8 Community-observed events (not in official docs)
 
@@ -435,8 +437,8 @@ schemas may not be stable.
 
 | Event name | Notes |
 |------------|------|
-| `claude_code.session_start` / `claude_code.session_end` | Not in official docs as of this writing; session lifecycle is conveyed via the `claude_code.session.count` metric. |
-| `claude_code.subagent_dispatch` | Not in official docs; subagent activity is inferred from `query_source` on `api_request`. |
+| `session_start` / `session_end` | Not in official docs as of this writing; session lifecycle is conveyed via the `claude_code.session.count` metric. |
+| `subagent_dispatch` | Not in official docs; subagent activity is inferred from `query_source` on `api_request`. |
 
 > **Not natively exposed:** Per-tool latency histograms, time-to-first-token, subagent
 > counts as a dedicated metric, per-file diff sizes, MCP server latency, context window

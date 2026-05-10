@@ -10,7 +10,7 @@ import (
 func TestApplyAPIRequest_MainQuerySource_BumpsTokensCostAndAPIRequests(t *testing.T) {
 	ev := domain.Event{
 		TS: 1000, SessionID: "s1", PromptID: "p1",
-		EventName: "claude_code.api_request",
+		EventName: "api_request",
 		Attrs: map[string]any{
 			"input_tokens":          float64(100),
 			"output_tokens":         float64(50),
@@ -41,7 +41,7 @@ func TestApplyAPIRequest_MainQuerySource_BumpsTokensCostAndAPIRequests(t *testin
 func TestApplyAPIRequest_SubagentBumpsSubagentRequests(t *testing.T) {
 	ev := domain.Event{
 		TS: 1000, SessionID: "s1", PromptID: "p1",
-		EventName: "claude_code.api_request",
+		EventName: "api_request",
 		Attrs:     map[string]any{"query_source": "subagent"},
 	}
 	ops := Apply(ev)
@@ -65,7 +65,7 @@ func TestApplyAPIRequest_SubagentBumpsSubagentRequests(t *testing.T) {
 func TestApplyAPIRequest_AuxiliaryBumpsAuxiliaryOnSessionOnly(t *testing.T) {
 	ev := domain.Event{
 		TS: 1000, SessionID: "s1", PromptID: "p1",
-		EventName: "claude_code.api_request",
+		EventName: "api_request",
 		Attrs:     map[string]any{"query_source": "auxiliary"},
 	}
 	ops := Apply(ev)
@@ -81,7 +81,7 @@ func TestApplyAPIRequest_AuxiliaryBumpsAuxiliaryOnSessionOnly(t *testing.T) {
 func TestApplyAPIRequest_NoPromptIDOmitsPromptOp(t *testing.T) {
 	ev := domain.Event{
 		TS: 1000, SessionID: "s1",
-		EventName: "claude_code.api_request",
+		EventName: "api_request",
 		Attrs:     map[string]any{"query_source": "main"},
 	}
 	ops := Apply(ev)

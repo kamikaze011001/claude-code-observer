@@ -10,9 +10,9 @@ func TestDeleteEventsBefore_DeletesOnlyOldRows(t *testing.T) {
 	defer repo.Close()
 
 	ctx := context.Background()
-	mustExec(t, repo, `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`, 100, "s1", "claude_code.user_prompt", "{}")
-	mustExec(t, repo, `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`, 500, "s1", "claude_code.user_prompt", "{}")
-	mustExec(t, repo, `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`, 1000, "s1", "claude_code.user_prompt", "{}")
+	mustExec(t, repo, `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`, 100, "s1", "user_prompt", "{}")
+	mustExec(t, repo, `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`, 500, "s1", "user_prompt", "{}")
+	mustExec(t, repo, `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`, 1000, "s1", "user_prompt", "{}")
 
 	n, err := repo.DeleteEventsBefore(ctx, 500)
 	if err != nil {

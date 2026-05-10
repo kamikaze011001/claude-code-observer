@@ -1,9 +1,9 @@
  SESSION abcdef12… 
 
 TIME                EVENT                      SUMMARY
-▶ 2026-05-10 12:43:01 claude_code.user_prompt    prompt: 142ch /commit
-  2026-05-10 12:43:02 claude_code.tool_result    Read 12ms
-  2026-05-10 12:43:03 claude_code.api_request    claude-opus-4-7 $0.0021
-  2026-05-10 12:43:05 claude_code.user_prompt    prompt: 88ch
+▶ 2026-05-10 12:43:01 user_prompt                prompt: 142ch /commit
+  2026-05-10 12:43:02 tool_result                Read 12ms
+  2026-05-10 12:43:03 api_request                claude-opus-4-7 $0.0021
+  2026-05-10 12:43:05 user_prompt                prompt: 88ch
 
 enter on a bold prompt row opens prompt detail

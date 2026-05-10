@@ -13,8 +13,8 @@ func TestInsertEvents(t *testing.T) {
 	defer repo.Close()
 
 	evs := []domain.Event{
-		{TS: 100, SessionID: "s1", PromptID: "p1", EventName: "claude_code.user_prompt", Attrs: map[string]any{"prompt_length": int64(10)}},
-		{TS: 200, SessionID: "s1", PromptID: "p1", EventName: "claude_code.api_request", Attrs: map[string]any{"cost_usd": 0.01, "model": "claude-opus-4-7"}},
+		{TS: 100, SessionID: "s1", PromptID: "p1", EventName: "user_prompt", Attrs: map[string]any{"prompt_length": int64(10)}},
+		{TS: 200, SessionID: "s1", PromptID: "p1", EventName: "api_request", Attrs: map[string]any{"cost_usd": 0.01, "model": "claude-opus-4-7"}},
 	}
 	if err := repo.InsertEvents(context.Background(), evs); err != nil {
 		t.Fatalf("InsertEvents: %v", err)
@@ -41,7 +41,7 @@ func TestInsertEvents(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("rows = %d, want 2", len(got))
 	}
-	if got[0].EventName != "claude_code.user_prompt" || got[1].EventName != "claude_code.api_request" {
+	if got[0].EventName != "user_prompt" || got[1].EventName != "api_request" {
 		t.Fatalf("ordering wrong: %+v", got)
 	}
 	if got[0].Attrs["prompt_length"].(float64) != 10 {

@@ -84,7 +84,7 @@ func TestE2E_LogsLandInEvents(t *testing.T) {
 		}
 		got = append(got, name)
 	}
-	if len(got) != 2 || got[0] != "claude_code.user_prompt" || got[1] != "claude_code.api_request" {
+	if len(got) != 2 || got[0] != "user_prompt" || got[1] != "api_request" {
 		t.Fatalf("got %v", got)
 	}
 

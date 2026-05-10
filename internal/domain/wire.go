@@ -2,30 +2,35 @@ package domain
 
 // Event names — emitted by Claude Code as OTLP log records.
 // Source of truth: docs/CLAUDE-CODE-OTEL.md §8.
+//
+// Claude Code emits these as bare strings on LogRecord.event_name (no
+// "claude_code." prefix). The eventparser also strips a leading
+// "claude_code." defensively (see internal/eventparser/parser.go), so
+// updaters keyed on these constants match either form on the wire.
 const (
-	EventUserPrompt            = "claude_code.user_prompt"
-	EventAPIRequest            = "claude_code.api_request"
-	EventAPIError              = "claude_code.api_error"
-	EventToolResult            = "claude_code.tool_result"
-	EventToolDecision          = "claude_code.tool_decision"
-	EventCompaction            = "claude_code.compaction"
-	EventPermissionModeChanged = "claude_code.permission_mode_changed"
-	EventAuth                  = "claude_code.auth"
-	EventMCPServerConnection   = "claude_code.mcp_server_connection"
-	EventInternalError         = "claude_code.internal_error"
-	EventPluginInstalled       = "claude_code.plugin_installed"
-	EventSkillActivated        = "claude_code.skill_activated"
-	EventAtMention             = "claude_code.at_mention"
-	EventAPIRetriesExhausted   = "claude_code.api_retries_exhausted"
-	EventHookExecutionStart    = "claude_code.hook_execution_start"
-	EventHookExecutionComplete = "claude_code.hook_execution_complete"
-	EventAPIRequestBody        = "claude_code.api_request_body"
-	EventAPIResponseBody       = "claude_code.api_response_body"
+	EventUserPrompt            = "user_prompt"
+	EventAPIRequest            = "api_request"
+	EventAPIError              = "api_error"
+	EventToolResult            = "tool_result"
+	EventToolDecision          = "tool_decision"
+	EventCompaction            = "compaction"
+	EventPermissionModeChanged = "permission_mode_changed"
+	EventAuth                  = "auth"
+	EventMCPServerConnection   = "mcp_server_connection"
+	EventInternalError         = "internal_error"
+	EventPluginInstalled       = "plugin_installed"
+	EventSkillActivated        = "skill_activated"
+	EventAtMention             = "at_mention"
+	EventAPIRetriesExhausted   = "api_retries_exhausted"
+	EventHookExecutionStart    = "hook_execution_start"
+	EventHookExecutionComplete = "hook_execution_complete"
+	EventAPIRequestBody        = "api_request_body"
+	EventAPIResponseBody       = "api_response_body"
 
 	// Community-observed event names (not in official docs §8.8).
 	// Retained because the existing rollup pipeline uses them.
-	EventSessionStart = "claude_code.session_start"
-	EventSessionEnd   = "claude_code.session_end"
+	EventSessionStart = "session_start"
+	EventSessionEnd   = "session_end"
 )
 
 // Metric names — emitted by Claude Code as OTLP metric datapoints.

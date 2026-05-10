@@ -256,7 +256,7 @@ func TestSessionEvents_DESCAndCursor(t *testing.T) {
 		ee = append(ee, seedEvent{
 			ts:        base + int64(i)*int64(time.Second),
 			sessionID: "s1",
-			eventName: "claude_code.tool_result",
+			eventName: "tool_result",
 			attrs:     fmt.Sprintf(`{"tool_name":"Read","duration_ms":%d,"success":true}`, i),
 		})
 	}
@@ -291,8 +291,8 @@ func TestSessionEvents_PromptIDPreserved(t *testing.T) {
 	base := tsNS(2026, 5, 10, 12, 0, 0)
 	ss := []seedSession{{id: "s1", project: "p", started: base, endedNull: true}}
 	ee := []seedEvent{
-		{ts: base, sessionID: "s1", promptID: "p1", eventName: "claude_code.user_prompt", attrs: `{"prompt_length":12}`},
-		{ts: base + 1, sessionID: "s1", promptID: "", eventName: "claude_code.api_error", attrs: `{"error":"x"}`},
+		{ts: base, sessionID: "s1", promptID: "p1", eventName: "user_prompt", attrs: `{"prompt_length":12}`},
+		{ts: base + 1, sessionID: "s1", promptID: "", eventName: "api_error", attrs: `{"error":"x"}`},
 	}
 	db := openTestRO(t, seedEvents(t, ss, ee))
 	rows, _, err := readstore.SessionEvents(t.Context(), db, "s1", nil, 50)
@@ -336,7 +336,7 @@ func seedPrompt(t *testing.T, sessionID, promptID string, started int64, cost fl
 		`{"model":"claude-opus-4-7","cost_usd":0.0021,"input_tokens":800,"output_tokens":120}`,
 		`{"model":"claude-opus-4-7","cost_usd":0.0021,"input_tokens":440,"output_tokens":192}`,
 	} {
-		_, err := repo.DB().Exec(`INSERT INTO events(ts, session_id, prompt_id, event_name, attrs) VALUES (?, ?, ?, 'claude_code.api_request', ?)`,
+		_, err := repo.DB().Exec(`INSERT INTO events(ts, session_id, prompt_id, event_name, attrs) VALUES (?, ?, ?, 'api_request', ?)`,
 			started+int64(i+1)*int64(time.Second), sessionID, promptID, attrs)
 		if err != nil {
 			t.Fatalf("api_request insert: %v", err)
@@ -346,7 +346,7 @@ func seedPrompt(t *testing.T, sessionID, promptID string, started int64, cost fl
 		`{"tool_name":"Read","duration_ms":12,"success":true}`,
 		`{"tool_name":"Bash","duration_ms":1245,"success":false}`,
 	} {
-		_, err := repo.DB().Exec(`INSERT INTO events(ts, session_id, prompt_id, event_name, attrs) VALUES (?, ?, ?, 'claude_code.tool_result', ?)`,
+		_, err := repo.DB().Exec(`INSERT INTO events(ts, session_id, prompt_id, event_name, attrs) VALUES (?, ?, ?, 'tool_result', ?)`,
 			started+int64(i+3)*int64(time.Second), sessionID, promptID, attrs)
 		if err != nil {
 			t.Fatalf("tool_result insert: %v", err)
