@@ -81,6 +81,31 @@ func TestSweeper_Tick_EmptyTableNoError(t *testing.T) {
 	}
 }
 
+func TestNewSweeper_NilLoggerUsesDefault(t *testing.T) {
+	repo := openTempRepo(t)
+	clock := scheduler.NewFakeClock(time.Now())
+	sw := NewSweeper(repo, clock, 30*time.Minute, nil)
+	if sw == nil {
+		t.Fatal("NewSweeper returned nil")
+	}
+	// Tick should not panic with the default logger.
+	if err := sw.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+}
+
+func TestSweeper_Tick_PropagatesRepoError(t *testing.T) {
+	repo := openTempRepo(t)
+	if err := repo.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	clock := scheduler.NewFakeClock(time.Now())
+	sw := NewSweeper(repo, clock, 30*time.Minute, silentLogger())
+	if err := sw.Tick(context.Background()); err == nil {
+		t.Fatal("Tick on closed repo: want error, got nil")
+	}
+}
+
 func mustExec(t *testing.T, db *sql.DB, q string, args ...any) {
 	t.Helper()
 	if _, err := db.Exec(q, args...); err != nil {
