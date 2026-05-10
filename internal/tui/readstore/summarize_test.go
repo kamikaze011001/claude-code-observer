@@ -15,7 +15,7 @@ func TestSummarize(t *testing.T) {
 		{"user_prompt missing length", "claude_code.user_prompt", `{}`, "prompt"},
 		{"tool_result success", "claude_code.tool_result", `{"tool_name":"Read","duration_ms":12,"success":true}`, "Read 12ms"},
 		{"tool_result fail", "claude_code.tool_result", `{"tool_name":"Bash","duration_ms":1245,"success":false}`, "Bash 1245ms ✗"},
-		{"tool_decision", "claude_code.tool_decision", `{"decision":"deny","tool_name":"Bash"}`, "deny Bash"},
+		{"tool_decision", "claude_code.tool_decision", `{"decision":"reject","tool_name":"Bash"}`, "reject Bash"},
 		{"api_request", "claude_code.api_request", `{"model":"claude-opus-4-7","cost_usd":0.0021}`, "claude-opus-4-7 $0.0021"},
 		{"api_error with message", "claude_code.api_error", `{"error":"timeout"}`, "error: timeout"},
 		{"api_error with status only", "claude_code.api_error", `{"status_code":429}`, "error: 429"},

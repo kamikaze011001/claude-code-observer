@@ -24,7 +24,7 @@ func TestInsertEventsAndApplyRollups_BuildsSessionAndPromptRows(t *testing.T) {
 				"cost_usd": 0.025, "query_source": "main"}},
 		{TS: 1300, SessionID: "s1", PromptID: "p1", EventName: "claude_code.tool_result"},
 		{TS: 1400, SessionID: "s1", EventName: "claude_code.tool_decision",
-			Attrs: map[string]any{"decision": "deny"}},
+			Attrs: map[string]any{"decision": "reject"}},
 		{TS: 1500, SessionID: "s1", PromptID: "p1", EventName: "claude_code.api_error"},
 		{TS: 1600, SessionID: "s1", EventName: "claude_code.session_end"},
 	}
