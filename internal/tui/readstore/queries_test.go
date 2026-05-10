@@ -3,6 +3,7 @@ package readstore_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -306,5 +307,97 @@ func TestSessionEvents_PromptIDPreserved(t *testing.T) {
 	}
 	if rows[1].PromptID != "p1" {
 		t.Errorf("rows[1].PromptID=%q want p1", rows[1].PromptID)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Helpers for PromptDetail tests
+// ---------------------------------------------------------------------------
+
+func seedPrompt(t *testing.T, sessionID, promptID string, started int64, cost float64) string {
+	t.Helper()
+	path := seedSessions(t, []seedSession{{id: sessionID, project: "p", started: started, endedNull: true}})
+	dir := filepath.Dir(path)
+	repo, err := repository.Open(dir)
+	if err != nil {
+		t.Fatalf("repo: %v", err)
+	}
+	defer repo.Close()
+	_, err = repo.DB().Exec(`
+		INSERT INTO prompts(prompt_id, session_id, started_at, ended_at, prompt_length, command_name, command_source,
+			cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+			api_requests, subagent_requests, tool_calls, had_error)
+		VALUES (?, ?, ?, ?, 100, NULL, NULL, ?, 1240, 312, 0, 0, 2, 0, 2, 0)`,
+		promptID, sessionID, started, started+int64(4*time.Second), cost)
+	if err != nil {
+		t.Fatalf("prompt insert: %v", err)
+	}
+	for i, attrs := range []string{
+		`{"model":"claude-opus-4-7","cost_usd":0.0021,"input_tokens":800,"output_tokens":120}`,
+		`{"model":"claude-opus-4-7","cost_usd":0.0021,"input_tokens":440,"output_tokens":192}`,
+	} {
+		_, err := repo.DB().Exec(`INSERT INTO events(ts, session_id, prompt_id, event_name, attrs) VALUES (?, ?, ?, 'claude_code.api_request', ?)`,
+			started+int64(i+1)*int64(time.Second), sessionID, promptID, attrs)
+		if err != nil {
+			t.Fatalf("api_request insert: %v", err)
+		}
+	}
+	for i, attrs := range []string{
+		`{"tool_name":"Read","duration_ms":12,"success":true}`,
+		`{"tool_name":"Bash","duration_ms":1245,"success":false}`,
+	} {
+		_, err := repo.DB().Exec(`INSERT INTO events(ts, session_id, prompt_id, event_name, attrs) VALUES (?, ?, ?, 'claude_code.tool_result', ?)`,
+			started+int64(i+3)*int64(time.Second), sessionID, promptID, attrs)
+		if err != nil {
+			t.Fatalf("tool_result insert: %v", err)
+		}
+	}
+	return path
+}
+
+// ---------------------------------------------------------------------------
+// PromptDetail tests
+// ---------------------------------------------------------------------------
+
+func TestPromptDetail_Found(t *testing.T) {
+	t.Parallel()
+	started := tsNS(2026, 5, 10, 12, 0, 0)
+	db := openTestRO(t, seedPrompt(t, "s1", "p1", started, 0.0042))
+	pd, err := readstore.PromptDetail(t.Context(), db, "p1")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if pd.Prompt.PromptID != "p1" {
+		t.Errorf("prompt_id=%q", pd.Prompt.PromptID)
+	}
+	if pd.Prompt.CostUSD != 0.0042 {
+		t.Errorf("cost=%v", pd.Prompt.CostUSD)
+	}
+	if len(pd.APIRequests) != 2 {
+		t.Errorf("api_requests=%d", len(pd.APIRequests))
+	}
+	if len(pd.ToolCalls) != 2 {
+		t.Errorf("tool_calls=%d", len(pd.ToolCalls))
+	}
+	if !pd.APIRequests[0].TS.Before(pd.APIRequests[1].TS) {
+		t.Error("api_requests must be ASC ts")
+	}
+	if !pd.ToolCalls[0].TS.Before(pd.ToolCalls[1].TS) {
+		t.Error("tool_calls must be ASC ts")
+	}
+	if pd.ToolCalls[1].Success {
+		t.Error("second tool_result was success=false")
+	}
+	if pd.APIRequests[0].Model != "claude-opus-4-7" {
+		t.Errorf("model=%q", pd.APIRequests[0].Model)
+	}
+}
+
+func TestPromptDetail_NotFound(t *testing.T) {
+	t.Parallel()
+	db := openTestRO(t, seedSessions(t, nil))
+	_, err := readstore.PromptDetail(t.Context(), db, "missing")
+	if !errors.Is(err, readstore.ErrNotFound) {
+		t.Fatalf("err=%v want ErrNotFound", err)
 	}
 }

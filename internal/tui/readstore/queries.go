@@ -3,6 +3,8 @@ package readstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -235,4 +237,139 @@ LIMIT ?`
 		return nil, false, fmt.Errorf("session events iter: %w", err)
 	}
 	return out, len(out) == limit, nil
+}
+
+// ErrNotFound is returned when a lookup-by-id query finds no row.
+var ErrNotFound = errors.New("readstore: not found")
+
+// Prompt is the row from the prompts rollup table.
+type Prompt struct {
+	PromptID            string
+	SessionID           string
+	StartedAt           time.Time
+	EndedAt             time.Time
+	PromptLength        int64
+	CommandName         string
+	CommandSource       string
+	CostUSD             float64
+	InputTokens         int64
+	OutputTokens        int64
+	CacheReadTokens     int64
+	CacheCreationTokens int64
+	APIRequests         int64
+	SubagentRequests    int64
+	ToolCalls           int64
+	HadError            bool
+}
+
+// ToolCall is one tool_result event associated with a prompt.
+type ToolCall struct {
+	TS         time.Time
+	ToolName   string
+	DurationMS int64
+	Success    bool
+}
+
+// APIRequest is one api_request event associated with a prompt.
+type APIRequest struct {
+	TS           time.Time
+	Model        string
+	CostUSD      float64
+	InputTokens  int64
+	OutputTokens int64
+}
+
+// PromptDetailResult bundles a prompt row with its partitioned events.
+type PromptDetailResult struct {
+	Prompt      Prompt
+	ToolCalls   []ToolCall
+	APIRequests []APIRequest
+}
+
+// PromptDetail fetches the prompt row plus its tool_result and api_request
+// events ordered ASC by ts. Returns ErrNotFound when no such prompt exists.
+func PromptDetail(ctx context.Context, db *sql.DB, promptID string) (PromptDetailResult, error) {
+	const q = `
+SELECT prompt_id, session_id, started_at, ended_at,
+       COALESCE(prompt_length, 0), COALESCE(command_name, ''), COALESCE(command_source, ''),
+       cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+       api_requests, subagent_requests, tool_calls, had_error
+FROM prompts WHERE prompt_id = ?`
+	var (
+		p       Prompt
+		started int64
+		ended   sql.NullInt64
+		hadErr  int
+	)
+	err := db.QueryRowContext(ctx, q, promptID).Scan(
+		&p.PromptID, &p.SessionID, &started, &ended,
+		&p.PromptLength, &p.CommandName, &p.CommandSource,
+		&p.CostUSD, &p.InputTokens, &p.OutputTokens, &p.CacheReadTokens, &p.CacheCreationTokens,
+		&p.APIRequests, &p.SubagentRequests, &p.ToolCalls, &hadErr,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return PromptDetailResult{}, ErrNotFound
+	}
+	if err != nil {
+		return PromptDetailResult{}, fmt.Errorf("prompt detail: %w", err)
+	}
+	p.StartedAt = time.Unix(0, started).UTC()
+	if ended.Valid {
+		p.EndedAt = time.Unix(0, ended.Int64).UTC()
+	}
+	p.HadError = hadErr == 1
+
+	evRows, err := db.QueryContext(ctx, `
+SELECT ts, event_name, attrs
+FROM events
+WHERE prompt_id = ? AND event_name IN ('claude_code.tool_result','claude_code.api_request')
+ORDER BY ts`, promptID)
+	if err != nil {
+		return PromptDetailResult{}, fmt.Errorf("prompt events: %w", err)
+	}
+	defer evRows.Close()
+
+	out := PromptDetailResult{Prompt: p}
+	for evRows.Next() {
+		var (
+			ts        int64
+			eventName string
+			attrs     []byte
+		)
+		if err := evRows.Scan(&ts, &eventName, &attrs); err != nil {
+			return PromptDetailResult{}, fmt.Errorf("prompt event scan: %w", err)
+		}
+		ev := time.Unix(0, ts).UTC()
+		var a map[string]any
+		_ = json.Unmarshal(attrs, &a)
+		switch eventName {
+		case "claude_code.tool_result":
+			tc := ToolCall{TS: ev}
+			tc.ToolName, _ = a["tool_name"].(string)
+			if v, ok := a["duration_ms"].(float64); ok {
+				tc.DurationMS = int64(v)
+			}
+			if v, ok := a["success"].(bool); ok {
+				tc.Success = v
+			}
+			out.ToolCalls = append(out.ToolCalls, tc)
+		case "claude_code.api_request":
+			r := APIRequest{TS: ev}
+			r.Model, _ = a["model"].(string)
+			if v, ok := a["cost_usd"].(float64); ok {
+				r.CostUSD = v
+			}
+			if v, ok := a["input_tokens"].(float64); ok {
+				r.InputTokens = int64(v)
+			}
+			if v, ok := a["output_tokens"].(float64); ok {
+				r.OutputTokens = int64(v)
+			}
+			out.APIRequests = append(out.APIRequests, r)
+		}
+	}
+	if err := evRows.Err(); err != nil {
+		return PromptDetailResult{}, fmt.Errorf("prompt events iter: %w", err)
+	}
+	return out, nil
 }
