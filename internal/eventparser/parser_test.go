@@ -215,6 +215,7 @@ func TestParse_PropagatesNewResourceAttrs(t *testing.T) {
 	res := &resourcepb.Resource{
 		Attributes: []*commonpb.KeyValue{
 			kvStr("user.account_id", "user_01ABC"),
+			kvStr("user.account_uuid", "11111111-2222-3333-4444-555555555555"),
 			kvStr("terminal.type", "iTerm.app"),
 		},
 	}
@@ -224,6 +225,9 @@ func TestParse_PropagatesNewResourceAttrs(t *testing.T) {
 	}
 	if ev.Attrs["user.account_id"] != "user_01ABC" {
 		t.Errorf("user.account_id = %v, want user_01ABC", ev.Attrs["user.account_id"])
+	}
+	if ev.Attrs["user.account_uuid"] != "11111111-2222-3333-4444-555555555555" {
+		t.Errorf("user.account_uuid = %v", ev.Attrs["user.account_uuid"])
 	}
 	if ev.Attrs["terminal.type"] != "iTerm.app" {
 		t.Errorf("terminal.type = %v, want iTerm.app", ev.Attrs["terminal.type"])
