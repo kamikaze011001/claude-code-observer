@@ -20,20 +20,29 @@ func summarize(eventName string, attrs []byte) string {
 	switch eventName {
 	case "claude_code.user_prompt":
 		if length, ok := a["prompt_length"]; ok {
-			if cmd, hasCmd := a["command_name"].(string); hasCmd && cmd != "" {
-				return truncRunes(fmt.Sprintf("prompt: %vch /%s", length, cmd), maxSummaryRunes)
+			var lenStr string
+			if f, isFloat := length.(float64); isFloat {
+				lenStr = fmt.Sprintf("%dch", int(f))
+			} else {
+				lenStr = fmt.Sprintf("%vch", length)
 			}
-			return truncRunes(fmt.Sprintf("prompt: %vch", length), maxSummaryRunes)
+			if cmd, hasCmd := a["command_name"].(string); hasCmd && cmd != "" {
+				return truncRunes("prompt: "+lenStr+" /"+cmd, maxSummaryRunes)
+			}
+			return truncRunes("prompt: "+lenStr, maxSummaryRunes)
 		}
 		return "prompt"
 	case "claude_code.tool_result":
 		tool, _ := a["tool_name"].(string)
-		dur := a["duration_ms"]
+		durStr := "?ms"
+		if d, ok := a["duration_ms"].(float64); ok {
+			durStr = fmt.Sprintf("%dms", int(d))
+		}
 		mark := ""
 		if ok, isBool := a["success"].(bool); isBool && !ok {
 			mark = " ✗"
 		}
-		return truncRunes(fmt.Sprintf("%s %vms%s", tool, dur, mark), maxSummaryRunes)
+		return truncRunes(fmt.Sprintf("%s %s%s", tool, durStr, mark), maxSummaryRunes)
 	case "claude_code.tool_decision":
 		dec, _ := a["decision"].(string)
 		tool, _ := a["tool_name"].(string)

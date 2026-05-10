@@ -22,6 +22,8 @@ func TestSummarize(t *testing.T) {
 		{"unknown event", "claude_code.something_else", `{}`, "claude_code.something_else"},
 		{"truncates over 60", "claude_code.tool_result", `{"tool_name":"Aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","duration_ms":1}`, "Aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…"},
 		{"bad json", "claude_code.api_request", `not json`, "claude_code.api_request"},
+		{"tool_result missing duration", "claude_code.tool_result", `{"tool_name":"Read","success":true}`, "Read ?ms"},
+		{"user_prompt fractional length (defensive)", "claude_code.user_prompt", `{"prompt_length":88.7}`, "prompt: 88ch"},
 	}
 	for _, c := range cases {
 		c := c
