@@ -3,6 +3,7 @@ package eventparser
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
@@ -74,14 +75,19 @@ func Parse(rec *logspb.LogRecord, resource *resourcepb.Resource) (domain.Event, 
 	}, nil
 }
 
-// eventNameOf checks (in order) the LogRecord.EventName field, then the
-// "event.name" attribute. If neither is set, returns the empty string.
+// eventNameOf returns the event name from (in order) LogRecord.EventName,
+// then the "event.name" attribute. If neither is set, returns "".
+//
+// Claude Code currently emits bare event names (e.g. "user_prompt"). This
+// function strips a leading "claude_code." defensively so the receiver keeps
+// working if a future release re-introduces the prefix. See
+// docs/CLAUDE-CODE-OTEL.md §8.
 func eventNameOf(rec *logspb.LogRecord, flat map[string]any) string {
+	var name string
 	if n := rec.GetEventName(); n != "" {
-		return n
+		name = n
+	} else if s, ok := flat["event.name"].(string); ok {
+		name = s
 	}
-	if s, ok := flat["event.name"].(string); ok {
-		return s
-	}
-	return ""
+	return strings.TrimPrefix(name, "claude_code.")
 }

@@ -52,7 +52,7 @@ func TestParse_MinimalUserPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if got.SessionID != "sess-1" || got.PromptID != "pr-1" || got.EventName != "claude_code.user_prompt" {
+	if got.SessionID != "sess-1" || got.PromptID != "pr-1" || got.EventName != "user_prompt" {
 		t.Fatalf("identity wrong: %+v", got)
 	}
 	if got.TS != 1700000000000000000 {
@@ -82,7 +82,7 @@ func TestParse_UnknownEventNameStoredVerbatim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if got.EventName != "claude_code.something_new" {
+	if got.EventName != "something_new" {
 		t.Fatalf("event_name = %q", got.EventName)
 	}
 	if got.Attrs["custom_field"] != "yo" {
@@ -109,7 +109,7 @@ func TestParse_EventNameFromRecordField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ev.EventName != "claude_code.from_field" {
+	if ev.EventName != "from_field" {
 		t.Errorf("event_name = %q", ev.EventName)
 	}
 }
@@ -177,7 +177,7 @@ func TestParse_Compact_Synth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ev.EventName != "claude_code.compact" {
+	if ev.EventName != "compact" {
 		t.Fatalf("event_name = %q", ev.EventName)
 	}
 	if ev.Attrs["tokens_before"] != int64(100000) {
@@ -201,6 +201,38 @@ func TestParse_SubagentDispatch_Synth(t *testing.T) {
 	}
 	if ev.Attrs["child_session.id"] != "child-1" {
 		t.Errorf("child_session.id = %v", ev.Attrs["child_session.id"])
+	}
+}
+
+func TestParse_StripsClaudeCodePrefixFromEventName(t *testing.T) {
+	cases := []struct {
+		name     string
+		incoming string
+		want     string
+	}{
+		{"prefixed user_prompt", "claude_code.user_prompt", "user_prompt"},
+		{"prefixed api_request", "claude_code.api_request", "api_request"},
+		{"already bare", "user_prompt", "user_prompt"},
+		{"unknown bare passes through", "something_new", "something_new"},
+		{"prefixed unknown stripped", "claude_code.something_new", "something_new"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &logspb.LogRecord{
+				TimeUnixNano: 1,
+				Attributes: []*commonpb.KeyValue{
+					kvStr("event.name", tc.incoming),
+					kvStr("session.id", "sess-1"),
+				},
+			}
+			got, err := Parse(rec, nil)
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if got.EventName != tc.want {
+				t.Fatalf("event_name = %q, want %q", got.EventName, tc.want)
+			}
+		})
 	}
 }
 
