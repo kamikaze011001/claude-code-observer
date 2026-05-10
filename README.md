@@ -1,78 +1,92 @@
 # claude-code-observer
 
-<!-- One sentence: what this project does and who it's for -->
-A golang CLI project that monitor claude code usage
+Local observability for Claude Code via OTLP. A single Go binary ingests OTLP/gRPC telemetry into a SQLite store and renders it in a TUI — costs, prompts, tool calls, errors — all on `localhost`, no cloud.
 
-**Stack:** Go 1.23 + chi
+**Stack:** Go 1.25 · gRPC · SQLite (modernc) · Bubble Tea TUI
 
----
+## Install
 
-## Quick Start
+Five steps from clone to dashboard.
 
-```bash
-go mod download       # Install dependencies
-go run ./cmd/app           # Start dev server → http://localhost:8080
-```
-
-## Commands
+### 1. Build
 
 ```bash
-go test ./...          # Run all tests
-go build -o bin/app         # Production build
-golangci-lint run          # Lint + auto-fix
-       # Run DB migrations  ← remove if no DB
+git clone https://github.com/kamikaze011001/claude-code-observer.git
+cd claude-code-observer
+mkdir -p ~/.claude-code-observer/bin ~/.claude-code-observer/logs
+go build -o ~/.claude-code-observer/bin/cco ./cmd/app
 ```
 
----
+Add `~/.claude-code-observer/bin` to your `PATH` if you want `cco` invocable from anywhere.
 
-## Project Structure
+### 2. Install the service
 
+**macOS (launchd):**
+
+```bash
+sed "s|__HOME__|$HOME|g" scripts/com.claude-code-observer.plist \
+  > ~/Library/LaunchAgents/com.claude-code-observer.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.claude-code-observer.plist
+launchctl kickstart gui/$(id -u)/com.claude-code-observer
 ```
-cmd/app/          # Routes / pages / main
-internal/service/       # Services, use cases
-internal/repository/          # DB queries, repositories
-internal/domain/               # Types, utils, helpers
+
+**Linux (systemd user unit):**
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp scripts/claude-code-observer.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now claude-code-observer
 ```
 
----
+Verify: `cco` (no args, opens TUI) — the dashboard should load without errors. The daemon listens on `127.0.0.1:4317` and writes logs to `~/.claude-code-observer/logs/cco.log`.
 
-## Architecture
+### 3. Configure a project
 
-Source of truth: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+In any project where you use Claude Code:
 
-**Layer boundaries:** ← adjust to your architecture
+```bash
+cd path/to/your/project
+cco init
+```
 
-- **Presentation** — UI & routing only, no business logic
-- **Service** — business logic, no HTTP awareness
-- **Data** — database queries, no business rules
+This writes seven OTel env vars under `env` in `.claude/settings.json` and probes the daemon. Existing keys (your `model`, `theme`, `hooks`, etc.) are preserved.
 
-See [`docs/DATA-MODELS.md`](docs/DATA-MODELS.md) for entity relationships.
+### 4. Use Claude Code
 
----
+Run any `claude` command in the configured project. Each prompt, API call, tool invocation, and error flows into SQLite within ~20 seconds.
 
-## Decisions
+### 5. Open the dashboard
 
-Architectural and micro-decisions are logged in [`docs/decisions/`](docs/decisions/).
+```bash
+cco
+```
 
-Before making a structural change, check the decision log first — it preserves the reasoning from previous sessions.
+You should see today's cost, prompt count, and the most expensive sessions. Drill in with `Enter`, back out with `b`.
 
----
+## Troubleshooting
 
-## Claude Code is ready
+- **macOS daemon logs:** `tail -f ~/.claude-code-observer/logs/cco.log` or `log show --predicate 'subsystem == "com.claude-code-observer"' --last 10m`
+- **Linux daemon logs:** `journalctl --user -u claude-code-observer -f` (or the same `cco.log` file)
+- **`cco init` says daemon not reachable:** the launchd/systemd unit didn't start. Check the service status (`launchctl print gui/$(id -u)/com.claude-code-observer` or `systemctl --user status claude-code-observer`).
+- **Log rotation:** v1 does not rotate `cco.log`. On Linux, drop a `logrotate` config; on macOS, truncate manually.
 
-This project is configured for Claude Code. Open Claude Code and ask:
+## Stopping / Uninstall
 
-> "Summarize this project's architecture and security rules."
+**macOS:** `launchctl bootout gui/$(id -u)/com.claude-code-observer && rm ~/Library/LaunchAgents/com.claude-code-observer.plist`
 
-**What's set up:**
+**Linux:** `systemctl --user disable --now claude-code-observer && rm ~/.config/systemd/user/claude-code-observer.service`
 
-- Claude knows your stack, commands, architecture, conventions, and decision history
-- `.claude/hooks/` — runtime hooks block dangerous commands before they execute
-- `.claude/settings.json` — hard rules: no `.env` reads, no force-push, no destructive commands
-- `.claude/rules/` — security, testing, and API rules loaded on demand
-- `docs/ARCHITECTURE.md` + `docs/DATA-MODELS.md` — structural source of truth
-- `docs/decisions/` — ADR + decision log so sessions don't undo each other
+Data lives in `~/.claude-code-observer/`; remove the directory to wipe state.
 
----
+## Architecture & Decisions
 
-*Generated by [ShipWithAI](https://shipwithai.io) · [Why the system around AI matters more than the model](https://shipwithai.io/blog/harness-engineering-claude-code)*
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — layer boundaries
+- [docs/DATA-MODELS.md](docs/DATA-MODELS.md) — schema
+- [docs/decisions/](docs/decisions/) — ADRs
+- [docs/CLAUDE-CODE-OTEL.md](docs/CLAUDE-CODE-OTEL.md) — what Claude Code emits
+- [docs/ROADMAP.md](docs/ROADMAP.md) — milestone tracker
+
+## License
+
+MIT.
