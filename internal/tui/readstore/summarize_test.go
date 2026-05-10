@@ -24,6 +24,18 @@ func TestSummarize(t *testing.T) {
 		{"bad json", "claude_code.api_request", `not json`, "claude_code.api_request"},
 		{"tool_result missing duration", "claude_code.tool_result", `{"tool_name":"Read","success":true}`, "Read ?ms"},
 		{"user_prompt fractional length (defensive)", "claude_code.user_prompt", `{"prompt_length":88.7}`, "prompt: 88ch"},
+		{"compaction", "claude_code.compaction", `{"pre_tokens":12300,"post_tokens":4100,"trigger":"auto"}`, "compaction: 12300→4100 tok"},
+		{"code_edit_decision", "claude_code.code_edit_tool.decision", `{"decision":"reject","tool_name":"Edit"}`, "Edit reject"},
+		{"permission_mode", "claude_code.permission_mode_changed", `{"to":"acceptEdits"}`, "permission_mode → acceptEdits"},
+		{"auth", "claude_code.auth", `{"event":"login"}`, "auth: login"},
+		{"mcp_conn", "claude_code.mcp_server_connection", `{"server_name":"github","state":"connected"}`, "mcp github: connected"},
+		{"internal_err", "claude_code.internal_error", `{"error":"oops"}`, "internal_error: oops"},
+		{"plugin_installed", "claude_code.plugin_installed", `{"name":"foo"}`, "plugin installed: foo"},
+		{"skill_activated", "claude_code.skill_activated", `{"name":"brainstorm"}`, "skill: brainstorm"},
+		{"at_mention", "claude_code.at_mention", `{"target":"file"}`, "@mention: file"},
+		{"retries_exhausted", "claude_code.api_retries_exhausted", `{"attempt":4}`, "api retries exhausted: 4"},
+		{"hook_start", "claude_code.hook_execution_start", `{"hook":"PreToolUse"}`, "hook start: PreToolUse"},
+		{"hook_complete", "claude_code.hook_execution_complete", `{"hook":"PreToolUse","duration_ms":12}`, "hook done: PreToolUse 12ms"},
 	}
 	for _, c := range cases {
 		c := c
