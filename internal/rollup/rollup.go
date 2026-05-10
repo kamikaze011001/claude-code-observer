@@ -1,6 +1,10 @@
 package rollup
 
-import "github.com/kamikaze011001/claude-code-observer/internal/domain"
+import (
+	"log/slog"
+
+	"github.com/kamikaze011001/claude-code-observer/internal/domain"
+)
 
 // Op is one SQL statement plus its positional arguments. The repository
 // executes Ops on the active transaction in the order they appear.
@@ -19,13 +23,15 @@ type Updater func(ev domain.Event) []Op
 var updaters = map[string]Updater{}
 
 // Apply looks up the updater for ev.EventName and returns its ops. Returns
-// nil for unknown or empty event names.
+// nil for unknown or empty event names, after emitting a debug log so future
+// Claude Code releases that introduce new event types are visible.
 func Apply(ev domain.Event) []Op {
 	if ev.EventName == "" {
 		return nil
 	}
 	u, ok := updaters[ev.EventName]
 	if !ok || u == nil {
+		slog.Debug("rollup: no handler for event", "name", ev.EventName)
 		return nil
 	}
 	return u(ev)
