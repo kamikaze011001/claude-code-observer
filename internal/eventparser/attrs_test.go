@@ -59,3 +59,17 @@ func TestFlattenKVs_NilSafe(t *testing.T) {
 		t.Fatalf("nil input → got %#v, want nil", got)
 	}
 }
+
+func TestFlattenKVs_BytesAndUnknown(t *testing.T) {
+	in := []*commonpb.KeyValue{
+		{Key: "by", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_BytesValue{BytesValue: []byte{1, 2, 3}}}},
+		{Key: "nil", Value: nil},
+	}
+	got := FlattenKVs(in)
+	if !reflect.DeepEqual(got["by"], []byte{1, 2, 3}) {
+		t.Errorf("bytes mismatch: %#v", got["by"])
+	}
+	if got["nil"] != nil {
+		t.Errorf("nil value not nil: %v", got["nil"])
+	}
+}

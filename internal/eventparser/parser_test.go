@@ -90,6 +90,53 @@ func TestParse_UnknownEventNameStoredVerbatim(t *testing.T) {
 	}
 }
 
+func TestParse_NilRecordReturnsErrDrop(t *testing.T) {
+	_, err := Parse(nil, nil)
+	if !errors.Is(err, ErrDrop) {
+		t.Fatalf("err = %v, want ErrDrop", err)
+	}
+}
+
+func TestParse_EventNameFromRecordField(t *testing.T) {
+	rec := &logspb.LogRecord{
+		TimeUnixNano: 2,
+		EventName:    "claude_code.from_field",
+		Attributes: []*commonpb.KeyValue{
+			kvStr("session.id", "s"),
+		},
+	}
+	ev, err := Parse(rec, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.EventName != "claude_code.from_field" {
+		t.Errorf("event_name = %q", ev.EventName)
+	}
+}
+
+func TestParse_ResourceAttrSkippedIfRecordWins(t *testing.T) {
+	rec := &logspb.LogRecord{
+		TimeUnixNano: 3,
+		Attributes: []*commonpb.KeyValue{
+			kvStr("event.name", "claude_code.test"),
+			kvStr("session.id", "s"),
+			kvStr("project.name", "record-wins"),
+		},
+	}
+	res := &resourcepb.Resource{
+		Attributes: []*commonpb.KeyValue{
+			kvStr("project.name", "resource-loses"),
+		},
+	}
+	ev, err := Parse(rec, res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.Attrs["project.name"] != "record-wins" {
+		t.Errorf("project.name = %v", ev.Attrs["project.name"])
+	}
+}
+
 func TestParse_APIError_Synth(t *testing.T) {
 	rec := &logspb.LogRecord{
 		TimeUnixNano: 9,
