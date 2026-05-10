@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/kamikaze011001/claude-code-observer/internal/domain"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/prompt"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
@@ -137,7 +138,7 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 				return m, nil
 			}
 			row := m.events[m.cursor]
-			if row.EventName != "claude_code.user_prompt" || row.PromptID == "" {
+			if row.EventName != domain.EventUserPrompt || row.PromptID == "" {
 				return m, nil
 			}
 			pool := m.pool
@@ -171,7 +172,7 @@ func (m *Detail) View(width, height int) string {
 			e.EventName,
 			e.Summary,
 		)
-		isPrompt := e.EventName == "claude_code.user_prompt" && e.PromptID != ""
+		isPrompt := e.EventName == domain.EventUserPrompt && e.PromptID != ""
 		switch {
 		case i == m.cursor && isPrompt:
 			line = defaultTheme.AccentText.Render("▶ " + line)

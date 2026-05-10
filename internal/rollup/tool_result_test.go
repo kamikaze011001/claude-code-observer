@@ -9,7 +9,7 @@ import (
 func TestApplyToolResult_BumpsToolCallsOnSessionAndPrompt(t *testing.T) {
 	ev := domain.Event{
 		TS: 1000, SessionID: "s1", PromptID: "p1",
-		EventName: "claude_code.tool_result",
+		EventName: "tool_result",
 	}
 	ops := Apply(ev)
 	if len(ops) != 2 {
@@ -28,7 +28,7 @@ func TestApplyToolResult_BumpsToolCallsOnSessionAndPrompt(t *testing.T) {
 func TestApplyToolResult_NoPromptIDOnlySession(t *testing.T) {
 	ev := domain.Event{
 		TS: 1000, SessionID: "s1",
-		EventName: "claude_code.tool_result",
+		EventName: "tool_result",
 	}
 	ops := Apply(ev)
 	if len(ops) != 1 {

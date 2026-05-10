@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/kamikaze011001/claude-code-observer/internal/domain"
 )
 
 // SessionRow is one row in the sessions list page.
@@ -322,7 +324,7 @@ FROM prompts WHERE prompt_id = ?`
 	evRows, err := db.QueryContext(ctx, `
 SELECT ts, event_name, attrs
 FROM events
-WHERE prompt_id = ? AND event_name IN ('claude_code.tool_result','claude_code.api_request')
+WHERE prompt_id = ? AND event_name IN ('tool_result','api_request')
 ORDER BY ts`, promptID)
 	if err != nil {
 		return PromptDetailResult{}, fmt.Errorf("prompt events: %w", err)
@@ -343,7 +345,7 @@ ORDER BY ts`, promptID)
 		var a map[string]any
 		_ = json.Unmarshal(attrs, &a)
 		switch eventName {
-		case "claude_code.tool_result":
+		case domain.EventToolResult:
 			tc := ToolCall{TS: ev}
 			tc.ToolName, _ = a["tool_name"].(string)
 			if v, ok := a["duration_ms"].(float64); ok {
@@ -353,7 +355,7 @@ ORDER BY ts`, promptID)
 				tc.Success = v
 			}
 			out.ToolCalls = append(out.ToolCalls, tc)
-		case "claude_code.api_request":
+		case domain.EventAPIRequest:
 			r := APIRequest{TS: ev}
 			r.Model, _ = a["model"].(string)
 			if v, ok := a["cost_usd"].(float64); ok {

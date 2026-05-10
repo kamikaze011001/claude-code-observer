@@ -22,8 +22,8 @@ func TestPruner_Tick_DeletesEventsAndMetricsOlderThanRetention(t *testing.T) {
 	oldNs := now.Add(-31 * 24 * time.Hour).UnixNano()
 	freshNs := now.UnixNano()
 
-	mustExec(t, repo.DB(), `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`, oldNs, "s1", "claude_code.user_prompt", "{}")
-	mustExec(t, repo.DB(), `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`, freshNs, "s1", "claude_code.user_prompt", "{}")
+	mustExec(t, repo.DB(), `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`, oldNs, "s1", "user_prompt", "{}")
+	mustExec(t, repo.DB(), `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`, freshNs, "s1", "user_prompt", "{}")
 	mustExec(t, repo.DB(), `INSERT INTO metric_snapshots (ts, session_id, metric_name, value, attrs) VALUES (?, ?, ?, ?, ?)`, oldNs, "s1", "m", 1.0, "{}")
 	mustExec(t, repo.DB(), `INSERT INTO metric_snapshots (ts, session_id, metric_name, value, attrs) VALUES (?, ?, ?, ?, ?)`, freshNs, "s1", "m", 1.0, "{}")
 	mustExec(t, repo.DB(), `INSERT INTO sessions (session_id, started_at, last_seen_at) VALUES (?, ?, ?)`, "s1", oldNs, oldNs)
@@ -49,7 +49,7 @@ func TestPruner_Tick_HonorsCustomRetention(t *testing.T) {
 
 	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
 	tenAgo := now.Add(-10 * 24 * time.Hour).UnixNano()
-	mustExec(t, repo.DB(), `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`, tenAgo, "s1", "claude_code.user_prompt", "{}")
+	mustExec(t, repo.DB(), `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`, tenAgo, "s1", "user_prompt", "{}")
 
 	clock := scheduler.NewFakeClock(now)
 	p := New(repo, clock, 7*24*time.Hour, silentLogger())
@@ -65,7 +65,7 @@ func TestPruner_Tick_Idempotent(t *testing.T) {
 	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
 
 	mustExec(t, repo.DB(), `INSERT INTO events (ts, session_id, event_name, attrs) VALUES (?, ?, ?, ?)`,
-		now.Add(-31*24*time.Hour).UnixNano(), "s1", "claude_code.user_prompt", "{}")
+		now.Add(-31*24*time.Hour).UnixNano(), "s1", "user_prompt", "{}")
 
 	clock := scheduler.NewFakeClock(now)
 	p := New(repo, clock, 30*24*time.Hour, silentLogger())

@@ -13,20 +13,20 @@ func TestInsertEventsAndApplyRollups_BuildsSessionAndPromptRows(t *testing.T) {
 	ctx := context.Background()
 
 	events := []domain.Event{
-		{TS: 1000, SessionID: "s1", EventName: "claude_code.session_start",
+		{TS: 1000, SessionID: "s1", EventName: "session_start",
 			Attrs: map[string]any{"project.name": "demo", "app.version": "1.0"}},
-		{TS: 1100, SessionID: "s1", PromptID: "p1", EventName: "claude_code.user_prompt",
+		{TS: 1100, SessionID: "s1", PromptID: "p1", EventName: "user_prompt",
 			Attrs: map[string]any{"prompt_length": float64(25), "command_name": "edit", "command_source": "builtin"}},
-		{TS: 1200, SessionID: "s1", PromptID: "p1", EventName: "claude_code.api_request",
+		{TS: 1200, SessionID: "s1", PromptID: "p1", EventName: "api_request",
 			Attrs: map[string]any{
 				"input_tokens": float64(100), "output_tokens": float64(50),
 				"cache_read_tokens": float64(10), "cache_creation_tokens": float64(5),
 				"cost_usd": 0.025, "query_source": "main"}},
-		{TS: 1300, SessionID: "s1", PromptID: "p1", EventName: "claude_code.tool_result"},
-		{TS: 1400, SessionID: "s1", EventName: "claude_code.tool_decision",
+		{TS: 1300, SessionID: "s1", PromptID: "p1", EventName: "tool_result"},
+		{TS: 1400, SessionID: "s1", EventName: "tool_decision",
 			Attrs: map[string]any{"decision": "reject"}},
-		{TS: 1500, SessionID: "s1", PromptID: "p1", EventName: "claude_code.api_error"},
-		{TS: 1600, SessionID: "s1", EventName: "claude_code.session_end"},
+		{TS: 1500, SessionID: "s1", PromptID: "p1", EventName: "api_error"},
+		{TS: 1600, SessionID: "s1", EventName: "session_end"},
 	}
 
 	if err := repo.InsertEventsAndApplyRollups(ctx, events); err != nil {
@@ -100,7 +100,7 @@ func TestInsertEventsAndApplyRollups_OutOfOrderEventCreatesSessionRow(t *testing
 	defer repo.Close()
 	// api_request arrives before any session_start
 	events := []domain.Event{
-		{TS: 5000, SessionID: "s9", PromptID: "p9", EventName: "claude_code.api_request",
+		{TS: 5000, SessionID: "s9", PromptID: "p9", EventName: "api_request",
 			Attrs: map[string]any{"input_tokens": float64(7), "query_source": "main"}},
 	}
 	if err := repo.InsertEventsAndApplyRollups(context.Background(), events); err != nil {

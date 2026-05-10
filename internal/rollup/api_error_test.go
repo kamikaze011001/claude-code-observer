@@ -10,7 +10,7 @@ import (
 func TestApplyAPIError_BumpsAPIErrorsAndMarksPromptHadError(t *testing.T) {
 	ev := domain.Event{
 		TS: 1000, SessionID: "s1", PromptID: "p1",
-		EventName: "claude_code.api_error",
+		EventName: "api_error",
 	}
 	ops := Apply(ev)
 	if len(ops) != 2 {
@@ -36,7 +36,7 @@ func TestApplyAPIError_BumpsAPIErrorsAndMarksPromptHadError(t *testing.T) {
 func TestApplyAPIError_NoPromptIDStillBumpsSession(t *testing.T) {
 	ev := domain.Event{
 		TS: 1000, SessionID: "s1",
-		EventName: "claude_code.api_error",
+		EventName: "api_error",
 	}
 	ops := Apply(ev)
 	if len(ops) != 1 {

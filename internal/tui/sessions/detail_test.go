@@ -19,8 +19,8 @@ func TestDetail_KeyJK(t *testing.T) {
 	t.Parallel()
 	m := NewDetail(nil, "s1").(*Detail)
 	m.events = []readstore.EventRow{
-		{TS: time.Now(), EventName: "claude_code.tool_result"},
-		{TS: time.Now(), EventName: "claude_code.user_prompt", PromptID: "p1"},
+		{TS: time.Now(), EventName: "tool_result"},
+		{TS: time.Now(), EventName: "user_prompt", PromptID: "p1"},
 	}
 	upd, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	if upd.(*Detail).cursor != 1 {
@@ -32,8 +32,8 @@ func TestDetail_EnterOnPromptPushes(t *testing.T) {
 	t.Parallel()
 	m := NewDetail(nil, "s1").(*Detail)
 	m.events = []readstore.EventRow{
-		{TS: time.Now(), EventName: "claude_code.tool_result", PromptID: "p1"},
-		{TS: time.Now(), EventName: "claude_code.user_prompt", PromptID: "p1"},
+		{TS: time.Now(), EventName: "tool_result", PromptID: "p1"},
+		{TS: time.Now(), EventName: "user_prompt", PromptID: "p1"},
 	}
 	m.cursor = 1
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -50,7 +50,7 @@ func TestDetail_EnterOnNonPromptDoesNothing(t *testing.T) {
 	t.Parallel()
 	m := NewDetail(nil, "s1").(*Detail)
 	m.events = []readstore.EventRow{
-		{TS: time.Now(), EventName: "claude_code.tool_result"},
+		{TS: time.Now(), EventName: "tool_result"},
 	}
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd != nil {
@@ -116,10 +116,10 @@ func TestDetail_View_Mixed(t *testing.T) {
 	t.Parallel()
 	m := NewDetail(nil, "abcdef123456").(*Detail)
 	m.events = []readstore.EventRow{
-		{TS: mustTime("2026-05-10T12:43:01Z"), EventName: "claude_code.user_prompt", PromptID: "p1", Summary: "prompt: 142ch /commit"},
-		{TS: mustTime("2026-05-10T12:43:02Z"), EventName: "claude_code.tool_result", Summary: "Read 12ms"},
-		{TS: mustTime("2026-05-10T12:43:03Z"), EventName: "claude_code.api_request", Summary: "claude-opus-4-7 $0.0021"},
-		{TS: mustTime("2026-05-10T12:43:05Z"), EventName: "claude_code.user_prompt", PromptID: "p2", Summary: "prompt: 88ch"},
+		{TS: mustTime("2026-05-10T12:43:01Z"), EventName: "user_prompt", PromptID: "p1", Summary: "prompt: 142ch /commit"},
+		{TS: mustTime("2026-05-10T12:43:02Z"), EventName: "tool_result", Summary: "Read 12ms"},
+		{TS: mustTime("2026-05-10T12:43:03Z"), EventName: "api_request", Summary: "claude-opus-4-7 $0.0021"},
+		{TS: mustTime("2026-05-10T12:43:05Z"), EventName: "user_prompt", PromptID: "p2", Summary: "prompt: 88ch"},
 	}
 	m.cursor = 0
 	m.lastOK = mustTime("2026-05-10T12:43:06Z")
@@ -131,7 +131,7 @@ func TestDetail_EnterPromptPushesPromptDetail(t *testing.T) {
 	t.Parallel()
 	m := NewDetail(nil, "s1").(*Detail)
 	m.events = []readstore.EventRow{
-		{TS: time.Now(), EventName: "claude_code.user_prompt", PromptID: "pX"},
+		{TS: time.Now(), EventName: "user_prompt", PromptID: "pX"},
 	}
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {

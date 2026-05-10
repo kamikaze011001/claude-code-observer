@@ -12,7 +12,7 @@ func TestApplyUserPrompt_EmitsPromptMetaAndSessionCounter(t *testing.T) {
 		TS:        1000,
 		SessionID: "s1",
 		PromptID:  "p1",
-		EventName: "claude_code.user_prompt",
+		EventName: "user_prompt",
 		Attrs: map[string]any{
 			"prompt_length":  float64(42),
 			"command_name":   "edit",
@@ -48,7 +48,7 @@ func TestApplyUserPrompt_MissingPromptIDOmitsPromptOp(t *testing.T) {
 	ev := domain.Event{
 		TS:        1000,
 		SessionID: "s1",
-		EventName: "claude_code.user_prompt",
+		EventName: "user_prompt",
 	}
 	ops := Apply(ev)
 	if len(ops) != 1 {
