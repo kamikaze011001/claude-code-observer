@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/prompt"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 )
@@ -124,4 +125,66 @@ func TestDetail_View_Mixed(t *testing.T) {
 	m.lastOK = mustTime("2026-05-10T12:43:06Z")
 	out := m.View(100, 20)
 	goldenDetail(t, "detail_mixed", out)
+}
+
+func TestDetail_EnterPromptPushesPromptDetail(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{
+		{TS: time.Now(), EventName: "claude_code.user_prompt", PromptID: "pX"},
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("no cmd")
+	}
+	msg := cmd()
+	push, ok := msg.(app.PushViewMsg)
+	if !ok {
+		t.Fatalf("msg type=%T", msg)
+	}
+	if _, isPrompt := push.V.(*prompt.Detail); !isPrompt {
+		t.Fatalf("pushed=%T want *prompt.Detail", push.V)
+	}
+}
+
+func TestDetail_ShortHelpAndInit(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	if len(m.ShortHelp()) == 0 {
+		t.Fatal("ShortHelp empty")
+	}
+	if cmd := m.Init(); cmd == nil {
+		t.Fatal("Init nil")
+	}
+}
+
+func TestDetail_FetchCmdNilPool(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	cmd := m.fetchCmd()
+	if cmd == nil {
+		t.Fatal("nil cmd")
+	}
+	if _, ok := cmd().(app.ErrMsg); !ok {
+		t.Fatal("want ErrMsg")
+	}
+}
+
+func TestDetail_TickInFlightNoOp(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.inFlight = true
+	_, cmd := m.Update(app.TickMsg(time.Now()))
+	if cmd != nil {
+		t.Fatal("expected no cmd while in-flight")
+	}
+}
+
+func TestDetail_ErrMsgSetsStale(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.Update(app.ErrMsg{Err: errSentinel("boom")})
+	if !m.stale {
+		t.Fatal("expected stale")
+	}
 }

@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/prompt"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 )
@@ -210,5 +211,4 @@ func (m *Detail) fetchCmd() tea.Cmd {
 	}
 }
 
-// newPromptDetail is wired to internal/tui/prompt.New in Task 13.
-var newPromptDetail = func(_ *sql.DB, _ string) app.View { return nil }
+var newPromptDetail = prompt.New
