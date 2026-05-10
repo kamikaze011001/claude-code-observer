@@ -7,6 +7,81 @@ import (
 	"time"
 )
 
+// SessionRow is one row in the sessions list page.
+type SessionRow struct {
+	SessionID   string
+	ProjectName string // "" rendered as "(unlabeled)" by the view
+	StartedAt   time.Time
+	LastSeenAt  time.Time
+	EndedAt     time.Time // zero if Live
+	DurationSec int64
+	CostUSD     float64
+	Prompts     int64
+	Live        bool
+}
+
+// SessionsPage returns one page of sessions newest-first. cursor is a started_at
+// (unix ns) — pass nil for the first page. The returned next-cursor is nil when
+// the page is the last one.
+func SessionsPage(ctx context.Context, db *sql.DB, cursor *int64, limit int) ([]SessionRow, *int64, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	const q = `
+SELECT session_id,
+       COALESCE(project_name, ''),
+       started_at,
+       last_seen_at,
+       ended_at,
+       cost_usd,
+       prompts
+FROM sessions
+WHERE (? IS NULL OR started_at < ?)
+ORDER BY started_at DESC
+LIMIT ?`
+	var cur sql.NullInt64
+	if cursor != nil {
+		cur = sql.NullInt64{Int64: *cursor, Valid: true}
+	}
+	rows, err := db.QueryContext(ctx, q, cur, cur, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sessions page: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]SessionRow, 0, limit)
+	for rows.Next() {
+		var (
+			r        SessionRow
+			started  int64
+			lastSeen int64
+			ended    sql.NullInt64
+		)
+		if err := rows.Scan(&r.SessionID, &r.ProjectName, &started, &lastSeen, &ended, &r.CostUSD, &r.Prompts); err != nil {
+			return nil, nil, fmt.Errorf("sessions page scan: %w", err)
+		}
+		r.StartedAt = time.Unix(0, started).UTC()
+		r.LastSeenAt = time.Unix(0, lastSeen).UTC()
+		if ended.Valid {
+			r.EndedAt = time.Unix(0, ended.Int64).UTC()
+			r.DurationSec = (ended.Int64 - started) / int64(time.Second)
+		} else {
+			r.Live = true
+			r.DurationSec = (lastSeen - started) / int64(time.Second)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("sessions page iter: %w", err)
+	}
+	var next *int64
+	if len(out) == limit {
+		v := out[len(out)-1].StartedAt.UnixNano()
+		next = &v
+	}
+	return out, next, nil
+}
+
 // WindowStats is the rollup over a single time window.
 type WindowStats struct {
 	CostUSD float64
