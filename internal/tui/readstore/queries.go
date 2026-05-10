@@ -183,3 +183,56 @@ LIMIT 3`
 	}
 	return s, top, nil
 }
+
+// EventRow is a row in the Session Detail timeline. Summary is derived from
+// attrs by summarize().
+type EventRow struct {
+	TS        time.Time
+	EventName string
+	PromptID  string // "" for session-level events
+	Summary   string
+}
+
+// SessionEvents returns up to limit rows for sessionID newest-first. beforeTS
+// is the keyset cursor (ts) — pass nil for the first page. The hasMore flag is
+// true when len(returned) == limit.
+func SessionEvents(ctx context.Context, db *sql.DB, sessionID string, beforeTS *int64, limit int) ([]EventRow, bool, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	const q = `
+SELECT ts, event_name, COALESCE(prompt_id, ''), attrs
+FROM events
+WHERE session_id = ?
+  AND (? IS NULL OR ts < ?)
+ORDER BY ts DESC
+LIMIT ?`
+	var cur sql.NullInt64
+	if beforeTS != nil {
+		cur = sql.NullInt64{Int64: *beforeTS, Valid: true}
+	}
+	rows, err := db.QueryContext(ctx, q, sessionID, cur, cur, limit)
+	if err != nil {
+		return nil, false, fmt.Errorf("session events: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]EventRow, 0, limit)
+	for rows.Next() {
+		var (
+			r     EventRow
+			ts    int64
+			attrs []byte
+		)
+		if err := rows.Scan(&ts, &r.EventName, &r.PromptID, &attrs); err != nil {
+			return nil, false, fmt.Errorf("session events scan: %w", err)
+		}
+		r.TS = time.Unix(0, ts).UTC()
+		r.Summary = summarize(r.EventName, attrs)
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("session events iter: %w", err)
+	}
+	return out, len(out) == limit, nil
+}

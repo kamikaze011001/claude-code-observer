@@ -204,3 +204,107 @@ func TestSessionsPage_KeysetPagination(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Helpers for SessionEvents tests
+// ---------------------------------------------------------------------------
+
+type seedEvent struct {
+	ts        int64
+	sessionID string
+	promptID  string // "" → NULL
+	eventName string
+	attrs     string // JSON
+}
+
+func seedEvents(t *testing.T, ss []seedSession, ee []seedEvent) string {
+	t.Helper()
+	path := seedSessions(t, ss)
+	dir := filepath.Dir(path)
+	repo, err := repository.Open(dir)
+	if err != nil {
+		t.Fatalf("repo: %v", err)
+	}
+	defer repo.Close()
+	for _, e := range ee {
+		var pid sql.NullString
+		if e.promptID != "" {
+			pid = sql.NullString{String: e.promptID, Valid: true}
+		}
+		_, err := repo.DB().Exec(
+			`INSERT INTO events(ts, session_id, prompt_id, event_name, attrs) VALUES (?, ?, ?, ?, ?)`,
+			e.ts, e.sessionID, pid, e.eventName, e.attrs,
+		)
+		if err != nil {
+			t.Fatalf("event insert: %v", err)
+		}
+	}
+	return path
+}
+
+// ---------------------------------------------------------------------------
+// SessionEvents tests
+// ---------------------------------------------------------------------------
+
+func TestSessionEvents_DESCAndCursor(t *testing.T) {
+	t.Parallel()
+	base := tsNS(2026, 5, 10, 12, 0, 0)
+	ss := []seedSession{{id: "s1", project: "p", started: base, cost: 0, prompts: 0, endedNull: true}}
+	var ee []seedEvent
+	for i := 0; i < 6; i++ {
+		ee = append(ee, seedEvent{
+			ts:        base + int64(i)*int64(time.Second),
+			sessionID: "s1",
+			eventName: "claude_code.tool_result",
+			attrs:     fmt.Sprintf(`{"tool_name":"Read","duration_ms":%d,"success":true}`, i),
+		})
+	}
+	db := openTestRO(t, seedEvents(t, ss, ee))
+
+	rows, hasMore, err := readstore.SessionEvents(t.Context(), db, "s1", nil, 4)
+	if err != nil {
+		t.Fatalf("page1: %v", err)
+	}
+	if len(rows) != 4 || !hasMore {
+		t.Fatalf("page1 rows=%d hasMore=%v want rows=4 hasMore=true", len(rows), hasMore)
+	}
+	if !rows[0].TS.After(rows[1].TS) {
+		t.Fatal("rows must be DESC by ts")
+	}
+	if rows[0].Summary != "Read 5ms" {
+		t.Errorf("summary[0] = %q; want %q", rows[0].Summary, "Read 5ms")
+	}
+
+	cursor := rows[len(rows)-1].TS.UnixNano()
+	rows2, hasMore2, err := readstore.SessionEvents(t.Context(), db, "s1", &cursor, 4)
+	if err != nil {
+		t.Fatalf("page2: %v", err)
+	}
+	if len(rows2) != 2 || hasMore2 {
+		t.Fatalf("page2 rows=%d hasMore=%v want rows=2 hasMore=false", len(rows2), hasMore2)
+	}
+}
+
+func TestSessionEvents_PromptIDPreserved(t *testing.T) {
+	t.Parallel()
+	base := tsNS(2026, 5, 10, 12, 0, 0)
+	ss := []seedSession{{id: "s1", project: "p", started: base, endedNull: true}}
+	ee := []seedEvent{
+		{ts: base, sessionID: "s1", promptID: "p1", eventName: "claude_code.user_prompt", attrs: `{"prompt_length":12}`},
+		{ts: base + 1, sessionID: "s1", promptID: "", eventName: "claude_code.api_error", attrs: `{"error":"x"}`},
+	}
+	db := openTestRO(t, seedEvents(t, ss, ee))
+	rows, _, err := readstore.SessionEvents(t.Context(), db, "s1", nil, 50)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows=%d", len(rows))
+	}
+	if rows[0].PromptID != "" {
+		t.Errorf("rows[0].PromptID=%q want empty", rows[0].PromptID)
+	}
+	if rows[1].PromptID != "p1" {
+		t.Errorf("rows[1].PromptID=%q want p1", rows[1].PromptID)
+	}
+}
