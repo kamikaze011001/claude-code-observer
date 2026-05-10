@@ -96,7 +96,17 @@ Run any `claude` command in the project — events flow within ~20 seconds — t
 cco
 ```
 
-<!-- USAGE -->
+## Usage
+
+| Command | Purpose |
+|---|---|
+| `cco` | Open the TUI dashboard (default) |
+| `cco init` | Wire current project's `.claude/settings.json` to the local daemon |
+| `cco serve` | Run the OTLP ingest daemon in the foreground (launchd/systemd run this) |
+| `cco rebuild` | Rebuild aggregates from raw events |
+| `cco version` | Print version and commit |
+
+All commands accept `--home <dir>` (overrides `$CCO_HOME`, default `~/.claude-code-observer`) and `--log-level debug|info|warn|error`.
 
 <!-- CONFIGURATION -->
 
