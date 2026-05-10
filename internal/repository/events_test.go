@@ -60,6 +60,26 @@ func TestInsertEvents_EmptyIsNoop(t *testing.T) {
 	}
 }
 
+func TestInsertMetricSnapshots(t *testing.T) {
+	repo := openTempRepo(t)
+	defer repo.Close()
+
+	snaps := []domain.MetricSnapshot{
+		{TS: 1, SessionID: "s1", MetricName: "claude_code.cost.usage", Value: 0.05, Attrs: map[string]any{"model": "x"}},
+		{TS: 2, SessionID: "s1", MetricName: "claude_code.token.usage", Value: 1000, Attrs: nil},
+	}
+	if err := repo.InsertMetricSnapshots(context.Background(), snaps); err != nil {
+		t.Fatalf("InsertMetricSnapshots: %v", err)
+	}
+	var n int
+	if err := repo.DB().QueryRow("SELECT COUNT(*) FROM metric_snapshots").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("rows = %d, want 2", n)
+	}
+}
+
 func openTempRepo(t *testing.T) *Repository {
 	t.Helper()
 	dir := t.TempDir()

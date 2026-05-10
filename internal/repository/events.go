@@ -30,6 +30,55 @@ func (r *Repository) InsertEvents(ctx context.Context, events []domain.Event) er
 	return nil
 }
 
+// InsertMetricSnapshots inserts a batch of metric datapoints in one tx.
+func (r *Repository) InsertMetricSnapshots(ctx context.Context, snaps []domain.MetricSnapshot) error {
+	if len(snaps) == 0 {
+		return nil
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := insertMetricSnapshotsTx(ctx, tx, snaps); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+func insertMetricSnapshotsTx(ctx context.Context, tx *sql.Tx, snaps []domain.MetricSnapshot) error {
+	const q = `INSERT INTO metric_snapshots (ts, session_id, metric_name, value, attrs) VALUES (?, ?, ?, ?, ?)`
+	stmt, err := tx.PrepareContext(ctx, q)
+	if err != nil {
+		return fmt.Errorf("prepare metric_snapshots: %w", err)
+	}
+	defer stmt.Close()
+
+	for i := range snaps {
+		s := snaps[i]
+		attrs := s.Attrs
+		if attrs == nil {
+			attrs = map[string]any{}
+		}
+		bs, err := json.Marshal(attrs)
+		if err != nil {
+			return fmt.Errorf("marshal attrs[%d]: %w", i, err)
+		}
+		var sessID any
+		if s.SessionID != "" {
+			sessID = s.SessionID
+		}
+		if _, err := stmt.ExecContext(ctx, s.TS, sessID, s.MetricName, s.Value, string(bs)); err != nil {
+			return fmt.Errorf("insert metric_snapshots[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
 // insertEventsTx is the work shared between InsertEvents and the combined
 // IngestBatch path used by service.Service. Caller owns the transaction.
 func insertEventsTx(ctx context.Context, tx *sql.Tx, events []domain.Event) error {
