@@ -134,5 +134,120 @@ func TestList_TickFetchesAndUpdatesRows(t *testing.T) {
 	}
 }
 
+func TestList_EnterPushesDetail(t *testing.T) {
+	t.Parallel()
+	m := NewList(nil)
+	m.rows = []readstore.SessionRow{{SessionID: "abc"}}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("no cmd from Enter")
+	}
+	msg := cmd()
+	push, ok := msg.(app.PushViewMsg)
+	if !ok {
+		t.Fatalf("msg=%T want PushViewMsg", msg)
+	}
+	d, ok := push.V.(*Detail)
+	if !ok {
+		t.Fatalf("pushed=%T want *Detail", push.V)
+	}
+	if d.sessionID != "abc" {
+		t.Fatalf("sessionID=%q want abc", d.sessionID)
+	}
+}
+
 // Compile-time check that List implements app.View.
 var _ app.View = (*List)(nil)
+
+func TestList_ShortHelpAndInit(t *testing.T) {
+	t.Parallel()
+	m := NewList(nil)
+	if len(m.ShortHelp()) == 0 {
+		t.Fatal("ShortHelp empty")
+	}
+	if cmd := m.Init(); cmd == nil {
+		t.Fatal("Init nil")
+	}
+}
+
+func TestList_FetchCmdNilPoolReturnsErr(t *testing.T) {
+	t.Parallel()
+	m := NewList(nil)
+	cmd := m.fetchCmd(nil)
+	if cmd == nil {
+		t.Fatal("nil cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(app.ErrMsg); !ok {
+		t.Fatalf("msg=%T want ErrMsg", msg)
+	}
+}
+
+func TestList_TickIgnoredWhenInFlight(t *testing.T) {
+	t.Parallel()
+	m := NewList(nil)
+	m.inFlight = true
+	_, cmd := m.Update(app.TickMsg(time.Now()))
+	if cmd != nil {
+		t.Fatal("expected no cmd while in-flight")
+	}
+}
+
+func TestList_ErrMsgSetsStale(t *testing.T) {
+	t.Parallel()
+	m := NewList(nil)
+	m.Update(app.ErrMsg{Err: errBoomList})
+	if !m.stale {
+		t.Fatal("expected stale on ErrMsg")
+	}
+}
+
+var errBoomList = errSentinel("boom")
+
+type errSentinel string
+
+func (e errSentinel) Error() string { return string(e) }
+
+func TestList_DataMsgUpdatesRows(t *testing.T) {
+	t.Parallel()
+	m := NewList(nil)
+	rows := []readstore.SessionRow{{SessionID: "x"}}
+	m.cursor = 0
+	m.Update(listDataMsg{rows: rows, next: nil, cursor: nil, at: time.Now()})
+	if len(m.rows) != 1 {
+		t.Fatalf("rows=%d", len(m.rows))
+	}
+}
+
+func TestList_HumanDurationBranches(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ secs int64; want string }{
+		{30, "30s"},
+		{125, "2m05s"},
+		{3700, "1h01m"},
+	}
+	for _, c := range cases {
+		if got := humanDuration(c.secs); got != c.want {
+			t.Fatalf("humanDuration(%d)=%q want %q", c.secs, got, c.want)
+		}
+	}
+}
+
+func TestList_SamePtrBranches(t *testing.T) {
+	t.Parallel()
+	if !samePtr(nil, nil) {
+		t.Fatal("nil,nil want true")
+	}
+	a := int64(1)
+	b := int64(1)
+	if !samePtr(&a, &b) {
+		t.Fatal("equal vals want true")
+	}
+	c := int64(2)
+	if samePtr(&a, &c) {
+		t.Fatal("differing vals want false")
+	}
+	if samePtr(nil, &a) {
+		t.Fatal("nil/non-nil want false")
+	}
+}
