@@ -11,9 +11,12 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 )
 
+// defaultTheme is memoized to avoid allocating a new theme on every frame.
+var defaultTheme = theme.Default()
+
 // View renders the dashboard body.
 func (m *Model) View(width, height int) string {
-	th := theme.Default()
+	th := defaultTheme
 	if width <= 0 {
 		width = 80
 	}
@@ -78,9 +81,11 @@ func (m *Model) renderTopSessions(th theme.Theme, w int) string {
 		if ts.Live {
 			status = th.AccentText.Render("● LIVE")
 		}
+		costPlain := fmt.Sprintf("$%-6.2f", ts.CostUSD) // 7-char fixed width including $ sign
+		costStyled := th.AccentText.Render(costPlain)
 		rows = append(rows, fmt.Sprintf("%d  %-16s %-7s %s  %-7d %s",
 			i+1, project, started,
-			th.AccentText.Render(fmt.Sprintf("$%.2f", ts.CostUSD)),
+			costStyled,
 			ts.Prompts, status))
 	}
 	return th.Block(w).Render(strings.Join(rows, "\n"))
@@ -97,8 +102,9 @@ func humanInt(n int64) string {
 }
 
 func truncate(s string, max int) string {
-	if len(s) <= max {
+	r := []rune(s)
+	if len(r) <= max {
 		return s
 	}
-	return s[:max-1] + "…"
+	return string(r[:max-1]) + "…"
 }

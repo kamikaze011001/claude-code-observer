@@ -126,8 +126,10 @@ func (a *App) forwardTop(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if len(a.stack) == 0 {
 		return a, nil
 	}
+	panicked := false
 	defer func() {
 		if r := recover(); r != nil {
+			panicked = true
 			a.lastErr = fmt.Errorf("view panic: %v", r)
 			a.consecErrs++
 		}
@@ -135,6 +137,9 @@ func (a *App) forwardTop(msg tea.Msg) (tea.Model, tea.Cmd) {
 	top := a.stack[len(a.stack)-1]
 	updated, cmd := top.Update(msg)
 	a.stack[len(a.stack)-1] = updated
+	if !panicked {
+		a.consecErrs = 0
+	}
 	return a, cmd
 }
 

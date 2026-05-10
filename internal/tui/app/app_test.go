@@ -101,3 +101,17 @@ func TestApp_TickForwardedToTop(t *testing.T) {
 		t.Fatalf("TickMsg should be forwarded, got %T", v.lastMsg)
 	}
 }
+
+func TestApp_ConsecErrsResetOnSuccess(t *testing.T) {
+	a := newAppWith(&fakeView{title: "A"})
+	a.Update(ErrMsg{Err: errors.New("x")})
+	a.Update(ErrMsg{Err: errors.New("x")})
+	if a.ConsecutiveErrors() != 2 {
+		t.Fatalf("setup: %d", a.ConsecutiveErrors())
+	}
+	// A non-Err message that goes through forwardTop should reset.
+	a.Update(TickMsg{})
+	if a.ConsecutiveErrors() != 0 {
+		t.Fatalf("non-Err forward should reset, got %d", a.ConsecutiveErrors())
+	}
+}

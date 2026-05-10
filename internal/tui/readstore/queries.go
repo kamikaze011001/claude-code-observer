@@ -36,7 +36,7 @@ type TopSession struct {
 // DashboardSnapshot returns the three-window rollup plus the top-3 most
 // expensive sessions started today (UTC). now is injected for testability.
 func DashboardSnapshot(ctx context.Context, db *sql.DB, now time.Time) (Snapshot, []TopSession, error) {
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	today := startOfDay.UnixNano()
 	d7 := startOfDay.Add(-7 * 24 * time.Hour).UnixNano()
 	d30 := startOfDay.Add(-30 * 24 * time.Hour).UnixNano()

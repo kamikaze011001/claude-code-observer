@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
@@ -79,8 +77,6 @@ func TestModel_InitCmdInvocable(t *testing.T) {
 		}
 	}
 }
-
-var _ tea.Cmd = nil
 
 func TestModel_StatusNoDaemon(t *testing.T) {
 	m := New(nil)
