@@ -108,7 +108,23 @@ cco
 
 All commands accept `--home <dir>` (overrides `$CCO_HOME`, default `~/.claude-code-observer`) and `--log-level debug|info|warn|error`.
 
-<!-- CONFIGURATION -->
+## Configuration
+
+`cco init` writes these seven keys into `.claude/settings.json` under `env`:
+
+| Key | Value |
+|---|---|
+| `CLAUDE_CODE_ENABLE_TELEMETRY` | `1` |
+| `OTEL_METRICS_EXPORTER` | `otlp` |
+| `OTEL_LOGS_EXPORTER` | `otlp` |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` |
+| `OTEL_RESOURCE_ATTRIBUTES` | merges `project.name=<basename($PWD)>` |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `20000` |
+
+Run `cco init --print` to preview the rendered file without writing. Run `cco init --force` to overwrite conflicting keys without prompting.
+
+See [docs/CLAUDE-CODE-OTEL.md](docs/CLAUDE-CODE-OTEL.md) for what Claude Code emits, and the [Phase 4 install ergonomics spec](docs/superpowers/specs/2026-05-10-phase-4-install-ergonomics-design.md) for the rationale of each key.
 
 <!-- ARCHITECTURE -->
 
