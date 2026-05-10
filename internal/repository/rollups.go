@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/domain"
 	"github.com/kamikaze011001/claude-code-observer/internal/rollup"
@@ -81,15 +82,7 @@ func isSessionOp(op rollup.Op) bool {
 }
 
 func containsSessionTarget(q string) bool {
-	for i := 0; i+14 < len(q); i++ {
-		if q[i] == 'I' && q[i+1] == 'N' && q[i+2] == 'T' && q[i+3] == 'O' &&
-			q[i+4] == ' ' && q[i+5] == 's' && q[i+6] == 'e' && q[i+7] == 's' &&
-			q[i+8] == 's' && q[i+9] == 'i' && q[i+10] == 'o' && q[i+11] == 'n' &&
-			q[i+12] == 's' {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(q, "INTO sessions")
 }
 
 // RebuildRollups truncates sessions and prompts, then replays every event
@@ -130,10 +123,8 @@ func (r *Repository) RebuildRollups(ctx context.Context) (err error) {
 				return fmt.Errorf("unmarshal attrs id=%d: %w", ev.ID, jerr)
 			}
 		}
-		for _, op := range rollup.Apply(ev) {
-			if _, err = tx.ExecContext(ctx, op.Query, op.Args...); err != nil {
-				return fmt.Errorf("rollup id=%d %s: %w", ev.ID, ev.EventName, err)
-			}
+		if err = execOpsOrdered(ctx, tx, ev.EventName, rollup.Apply(ev)); err != nil {
+			return fmt.Errorf("rollup id=%d: %w", ev.ID, err)
 		}
 	}
 	if err = rows.Err(); err != nil {

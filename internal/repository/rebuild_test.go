@@ -89,3 +89,29 @@ func TestRebuildRollups_IsIdempotent(t *testing.T) {
 		t.Errorf("rebuild not idempotent: %d vs %d", first, second)
 	}
 }
+
+func TestRebuildRollups_OutOfOrderEventInEventsTable(t *testing.T) {
+	repo := openTempRepo(t)
+	defer repo.Close()
+	ctx := context.Background()
+
+	// Seed events table directly with an api_request that has no prior session_start.
+	_, err := repo.db.ExecContext(ctx,
+		`INSERT INTO events (ts, session_id, prompt_id, event_name, attrs) VALUES (?, ?, ?, ?, ?)`,
+		int64(5000), "s9", "p9", "claude_code.api_request",
+		`{"input_tokens":7,"query_source":"main"}`)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	if err := repo.RebuildRollups(ctx); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+
+	var sCount, pCount int
+	repo.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE session_id='s9'`).Scan(&sCount)
+	repo.db.QueryRow(`SELECT COUNT(*) FROM prompts WHERE prompt_id='p9'`).Scan(&pCount)
+	if sCount != 1 || pCount != 1 {
+		t.Errorf("rebuild produced sessions=%d prompts=%d, want 1/1", sCount, pCount)
+	}
+}
