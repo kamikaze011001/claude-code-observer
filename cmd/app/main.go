@@ -39,6 +39,9 @@ func newRootCmd() *cobra.Command {
 	}
 	cmd.PersistentFlags().StringVar(&homeDir, "home", "", "Data directory (default: $CCO_HOME or ~/.claude-code-observer)")
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level: debug|info|warn|error")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return newTUICmd().RunE(cmd, args)
+	}
 	return cmd
 }
 

@@ -1,18 +1,38 @@
 package main
 
-import "github.com/spf13/cobra"
+import (
+	"fmt"
+	"path/filepath"
 
-// newTUICmd is invoked when no subcommand is given. We mount it as a
-// hidden subcommand and also wire it as the root's RunE in main.go via a
-// fall-through. For Phase 0 it prints a stub message.
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spf13/cobra"
+
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/dashboard"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+)
+
 func newTUICmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "tui",
 		Short:  "Open the interactive TUI",
-		Hidden: true, // exposed via default invocation in Phase 3
+		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logger.Info("tui not yet implemented", "home", homeDir)
-			cmd.Println("TUI not yet wired (Phase 3).")
+			dbPath := filepath.Join(homeDir, "db.sqlite")
+			pool, err := readstore.OpenRO(dbPath)
+			if err != nil {
+				return fmt.Errorf("open read pool: %w", err)
+			}
+			defer func() { _ = pool.Close() }()
+
+			shell := app.New(theme.Default())
+			shell.Push(dashboard.New(pool))
+
+			prog := tea.NewProgram(shell, tea.WithAltScreen(), tea.WithContext(cmd.Context()))
+			if _, err := prog.Run(); err != nil {
+				return fmt.Errorf("tui: %w", err)
+			}
 			return nil
 		},
 	}
