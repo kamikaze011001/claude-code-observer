@@ -5,8 +5,11 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/sessions"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 )
 
@@ -102,5 +105,22 @@ func TestModel_StatusLiveWithRecentEvent(t *testing.T) {
 	m.snap.LatestEventTS = fakeNow.Add(-5 * time.Second).UnixNano()
 	if got := m.Status(); got != theme.PillLive {
 		t.Fatalf("status: got %v want PillLive", got)
+	}
+}
+
+func TestModel_KeySEmitsPushSessionsList(t *testing.T) {
+	t.Parallel()
+	m := New(nil)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	if cmd == nil {
+		t.Fatal("no cmd returned for 's'")
+	}
+	msg := cmd()
+	push, ok := msg.(app.PushViewMsg)
+	if !ok {
+		t.Fatalf("msg=%T want PushViewMsg", msg)
+	}
+	if _, isList := push.V.(*sessions.List); !isList {
+		t.Fatalf("pushed view is %T, want *sessions.List", push.V)
 	}
 }

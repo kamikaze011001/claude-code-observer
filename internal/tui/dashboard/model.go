@@ -11,6 +11,7 @@ import (
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/sessions"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 )
 
@@ -66,6 +67,13 @@ func (m *Model) Update(msg tea.Msg) (app.View, tea.Cmd) {
 		m.inFlight = false
 		m.stale = true
 		return m, nil
+	case tea.KeyMsg:
+		if v.Type == tea.KeyRunes && len(v.Runes) == 1 && v.Runes[0] == 's' {
+			pool := m.pool
+			return m, func() tea.Msg {
+				return app.PushViewMsg{V: sessions.NewList(pool)}
+			}
+		}
 	}
 	return m, nil
 }
