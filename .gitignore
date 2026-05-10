@@ -1,0 +1,18 @@
+# Binaries
+bin/
+*.exe
+
+# Go
+*.test
+*.out
+coverage.txt
+
+# Local data
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
