@@ -1,7 +1,12 @@
 package sessions
 
 import (
+	"flag"
+	"os"
+	"path/filepath"
+	"regexp"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -9,6 +14,63 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 )
+
+var updateList = flag.Bool("update-list", false, "update list goldens")
+
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+
+func stripANSI(s string) string { return ansiRE.ReplaceAllString(s, "") }
+
+func goldenList(t *testing.T, name, got string) {
+	t.Helper()
+	path := filepath.Join("testdata", name+".golden")
+	got = stripANSI(got)
+	if *updateList {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir golden dir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+			t.Fatalf("write golden: %v", err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if got != string(want) {
+		t.Fatalf("golden mismatch %s\n--- got ---\n%s\n--- want ---\n%s", name, got, want)
+	}
+}
+
+func TestList_View_Empty(t *testing.T) {
+	t.Parallel()
+	m := NewList(nil)
+	out := m.View(80, 20)
+	goldenList(t, "list_empty", out)
+}
+
+func TestList_View_OnePage(t *testing.T) {
+	t.Parallel()
+	m := NewList(nil)
+	m.rows = []readstore.SessionRow{
+		{SessionID: "abc123def", ProjectName: "claude-code-observer", StartedAt: mustTime("2026-05-10T12:43:01Z"), DurationSec: 842, CostUSD: 0.42, Prompts: 7, Live: true},
+		{SessionID: "def456abc", ProjectName: "my-other-project", StartedAt: mustTime("2026-05-10T12:18:55Z"), DurationSec: 4920, CostUSD: 1.84, Prompts: 23, Live: false},
+		{SessionID: "ghi789", ProjectName: "", StartedAt: mustTime("2026-05-10T11:00:00Z"), DurationSec: 60, CostUSD: 0.01, Prompts: 1, Live: false},
+	}
+	m.cursor = 1
+	m.lastOK = mustTime("2026-05-10T12:43:02Z")
+	out := m.View(100, 20)
+	goldenList(t, "list_one_page", out)
+}
+
+func mustTime(s string) time.Time {
+	tm, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		panic(err)
+	}
+	return tm.UTC()
+}
 
 func TestList_KeyJDownKKDown(t *testing.T) {
 	t.Parallel()

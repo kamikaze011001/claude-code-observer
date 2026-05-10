@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -18,6 +20,9 @@ const (
 	listFetchTimeout = 500 * time.Millisecond
 	listPageSize     = 50
 )
+
+// defaultTheme is memoized to avoid allocating a new theme on every frame.
+var defaultTheme = theme.Default()
 
 var errNoPool = errors.New("sessions: no read pool")
 
@@ -171,8 +176,78 @@ func (m *List) Update(msg tea.Msg) (app.View, tea.Cmd) {
 	return m, nil
 }
 
-// View is implemented in Task 6. Stub so the package compiles.
-func (m *List) View(width, height int) string { return "" }
+// View renders the sessions list.
+func (m *List) View(width, height int) string {
+	var b strings.Builder
+	b.WriteString(defaultTheme.Heading.Render("SESSIONS"))
+	b.WriteString("    page ")
+	b.WriteString(fmt.Sprintf("%d", len(m.prevCurs)+1))
+	b.WriteString("\n\n")
+
+	if len(m.rows) == 0 {
+		b.WriteString(defaultTheme.MutedText.Render("no sessions yet — start using Claude Code with cco serve running"))
+		return b.String()
+	}
+
+	const projW = 20
+	header := fmt.Sprintf("%-3s %-16s %-*s %-9s %-7s %-7s %s",
+		"#", "STARTED", projW, "PROJECT", "DURATION", "COST", "PROMPTS", "STATUS")
+	b.WriteString(defaultTheme.MutedText.Render(header))
+	b.WriteString("\n")
+
+	for i, r := range m.rows {
+		project := r.ProjectName
+		if project == "" {
+			project = "(unlabeled)"
+		}
+		row := fmt.Sprintf("%-3d %-16s %-*s %-9s $%-6.2f %-7d %s",
+			i+1,
+			r.StartedAt.Format("2006-01-02 15:04"),
+			projW, truncRunesView(project, projW),
+			humanDuration(r.DurationSec),
+			r.CostUSD,
+			r.Prompts,
+			liveBadge(r.Live),
+		)
+		if i == m.cursor {
+			row = defaultTheme.AccentText.Render("▶ " + row)
+		} else {
+			row = "  " + row
+		}
+		b.WriteString(row)
+		b.WriteString("\n")
+	}
+	if m.nextCur != nil {
+		b.WriteString("\n")
+		b.WriteString(defaultTheme.MutedText.Render("press pgdn for next page"))
+	}
+	return b.String()
+}
+
+func liveBadge(live bool) string {
+	if !live {
+		return ""
+	}
+	return defaultTheme.Pill(theme.PillLive)
+}
+
+func humanDuration(sec int64) string {
+	if sec < 60 {
+		return fmt.Sprintf("%ds", sec)
+	}
+	if sec < 3600 {
+		return fmt.Sprintf("%dm%02ds", sec/60, sec%60)
+	}
+	return fmt.Sprintf("%dh%02dm", sec/3600, (sec%3600)/60)
+}
+
+func truncRunesView(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
+}
 
 func (m *List) fetchCmd(cursor *int64) tea.Cmd {
 	pool := m.pool
