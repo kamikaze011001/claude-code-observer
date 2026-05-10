@@ -18,3 +18,11 @@ func TestApply_EmptyEventNameReturnsNil(t *testing.T) {
 		t.Fatalf("expected nil for empty EventName")
 	}
 }
+
+func TestApply_AllDomainEventsHaveAHandler(t *testing.T) {
+	for _, name := range domain.AllEventNames {
+		if _, ok := updaters[name]; !ok {
+			t.Errorf("rollup.updaters has no entry for %q (declared in domain.AllEventNames)", name)
+		}
+	}
+}
