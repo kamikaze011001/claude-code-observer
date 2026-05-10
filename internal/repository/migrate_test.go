@@ -1,0 +1,124 @@
+package repository
+
+import (
+	"database/sql"
+	"io/fs"
+	"testing"
+	"testing/fstest"
+
+	_ "modernc.org/sqlite"
+)
+
+func openMemory(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+func TestRunMigrations_EmptyFS_CreatesSchemaVersionTable(t *testing.T) {
+	db := openMemory(t)
+	if err := runMigrations(db, fstest.MapFS{}); err != nil {
+		t.Fatalf("runMigrations: %v", err)
+	}
+	var v int
+	err := db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM schema_version").Scan(&v)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if v != 0 {
+		t.Errorf("version = %d, want 0", v)
+	}
+}
+
+func TestRunMigrations_AppliesValidMigration(t *testing.T) {
+	db := openMemory(t)
+	fsys := fstest.MapFS{
+		"migrations/0001_test.sql": &fstest.MapFile{
+			Data: []byte(`CREATE TABLE foo (id INTEGER PRIMARY KEY)`),
+		},
+	}
+	if err := runMigrations(db, fsys); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	var v int
+	if err := db.QueryRow("SELECT MAX(version) FROM schema_version").Scan(&v); err != nil {
+		t.Fatalf("schema_version: %v", err)
+	}
+	if v != 1 {
+		t.Errorf("version = %d, want 1", v)
+	}
+	if _, err := db.Exec("INSERT INTO foo(id) VALUES (1)"); err != nil {
+		t.Errorf("insert into foo: %v", err)
+	}
+}
+
+func TestRunMigrations_Idempotent(t *testing.T) {
+	db := openMemory(t)
+	fsys := fstest.MapFS{
+		"migrations/0001_test.sql": &fstest.MapFile{
+			Data: []byte(`CREATE TABLE foo (id INTEGER PRIMARY KEY)`),
+		},
+	}
+	if err := runMigrations(db, fsys); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	if err := runMigrations(db, fsys); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+	var n int
+	if err := db.QueryRow("SELECT COUNT(*) FROM schema_version").Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("schema_version rows = %d, want 1", n)
+	}
+}
+
+func TestRunMigrations_MalformedSQL_ReturnsError(t *testing.T) {
+	db := openMemory(t)
+	fsys := fstest.MapFS{
+		"migrations/0001_bad.sql": &fstest.MapFile{
+			Data: []byte(`THIS IS NOT VALID SQL;`),
+		},
+	}
+	err := runMigrations(db, fsys)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	var v int
+	if dbErr := db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM schema_version").Scan(&v); dbErr != nil {
+		t.Fatalf("query: %v", dbErr)
+	}
+	if v != 0 {
+		t.Errorf("version = %d after failed migration, want 0", v)
+	}
+}
+
+func TestRunMigrations_OrdersByVersion(t *testing.T) {
+	db := openMemory(t)
+	fsys := fstest.MapFS{
+		"migrations/0002_second.sql": &fstest.MapFile{
+			Data: []byte(`CREATE TABLE bar (id INTEGER PRIMARY KEY)`),
+		},
+		"migrations/0001_first.sql": &fstest.MapFile{
+			Data: []byte(`CREATE TABLE foo (id INTEGER PRIMARY KEY)`),
+		},
+	}
+	if err := runMigrations(db, fsys); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	var v int
+	if err := db.QueryRow("SELECT MAX(version) FROM schema_version").Scan(&v); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if v != 2 {
+		t.Errorf("version = %d, want 2", v)
+	}
+}
+
+// satisfy linter — io/fs is imported via the embedded test for Task 10.
+var _ = fs.ValidPath
