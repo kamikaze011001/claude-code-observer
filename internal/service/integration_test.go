@@ -87,4 +87,12 @@ func TestE2E_LogsLandInEvents(t *testing.T) {
 	if len(got) != 2 || got[0] != "claude_code.user_prompt" || got[1] != "claude_code.api_request" {
 		t.Fatalf("got %v", got)
 	}
+
+	var prompts int64
+	if err := repo.DB().QueryRow(`SELECT prompts FROM sessions WHERE session_id = ?`, "S").Scan(&prompts); err != nil {
+		t.Fatalf("query sessions: %v", err)
+	}
+	if prompts == 0 {
+		t.Errorf("expected sessions.prompts > 0 after ingest")
+	}
 }

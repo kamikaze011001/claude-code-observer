@@ -5,15 +5,24 @@ import (
 	"fmt"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/receiver"
 	"github.com/kamikaze011001/claude-code-observer/internal/repository"
+	"github.com/kamikaze011001/claude-code-observer/internal/retention"
+	"github.com/kamikaze011001/claude-code-observer/internal/scheduler"
 	"github.com/kamikaze011001/claude-code-observer/internal/service"
 )
 
-const defaultListenAddr = "127.0.0.1:4317"
+const (
+	defaultListenAddr    = "127.0.0.1:4317"
+	defaultIdleMinutes   = 30
+	defaultRetentionDays = 30
+	sweeperInterval      = 60 * time.Second
+	prunerInterval       = 24 * time.Hour
+)
 
 func newServeCmd() *cobra.Command {
 	var addr string
@@ -23,6 +32,15 @@ func newServeCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
+
+			idleMin, err := parsePositiveIntEnv("CCO_SESSION_IDLE_MIN", defaultIdleMinutes)
+			if err != nil {
+				return fmt.Errorf("config: %w", err)
+			}
+			retentionDays, err := parsePositiveIntEnv("CCO_RETENTION_DAYS", defaultRetentionDays)
+			if err != nil {
+				return fmt.Errorf("config: %w", err)
+			}
 
 			repo, err := repository.Open(homeDir)
 			if err != nil {
@@ -45,15 +63,30 @@ func newServeCmd() *cobra.Command {
 			if err := srv.Listen(); err != nil {
 				return fmt.Errorf("receiver listen: %w", err)
 			}
+
+			clock := scheduler.RealClock{}
+			sweeper := service.NewSweeper(repo, clock, time.Duration(idleMin)*time.Minute, logger)
+			pruner := retention.New(repo, clock, time.Duration(retentionDays)*24*time.Hour, logger)
+
+			// Eager prune at startup so a freshly-restarted daemon does not wait
+			// 24 hours to drop aged rows from prior runs.
+			if err := pruner.Tick(ctx); err != nil {
+				logger.Error("startup prune failed", "err", err)
+			}
+
 			logger.Info("daemon started",
 				"home", homeDir,
 				"binary_version", versionString(),
 				"schema_version", schemaVersion,
 				"otlp_addr", srv.Addr(),
+				"idle_minutes", idleMin,
+				"retention_days", retentionDays,
 			)
 
 			errCh := make(chan error, 1)
 			go func() { errCh <- srv.Serve() }()
+			go scheduler.Run(ctx, clock, sweeperInterval, "sweeper", logger, sweeper.Tick)
+			go scheduler.Run(ctx, clock, prunerInterval, "pruner", logger, pruner.Tick)
 
 			select {
 			case <-ctx.Done():
