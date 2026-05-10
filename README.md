@@ -160,6 +160,14 @@ rm ~/.config/systemd/user/claude-code-observer.service
 
 Data lives in `~/.claude-code-observer/`; remove the directory to wipe state.
 
-<!-- CONTRIBUTING -->
+## Contributing
 
-<!-- LICENSE -->
+- Current milestone: [docs/ROADMAP.md](docs/ROADMAP.md)
+- Architecture decisions: [docs/decisions/](docs/decisions/)
+- Code conventions: [CLAUDE.md](CLAUDE.md)
+
+Run `go vet ./... && go test ./... && go build -o bin/cco ./cmd/app` before opening a PR.
+
+## License
+
+MIT.
