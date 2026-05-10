@@ -135,9 +135,30 @@ Three components: a gRPC OTLP receiver on `127.0.0.1:4317` (`cmd/app/serve.go`),
 - [docs/decisions/](docs/decisions/) — ADRs
 - [docs/ROADMAP.md](docs/ROADMAP.md) — milestone tracker
 
-<!-- TROUBLESHOOTING -->
+## Troubleshooting
 
-<!-- UNINSTALL -->
+- **macOS daemon logs:** `tail -f ~/.claude-code-observer/logs/cco.log` or `log show --predicate 'subsystem == "com.claude-code-observer"' --last 10m`
+- **Linux daemon logs:** `journalctl --user -u claude-code-observer -f` (or the same `cco.log` file)
+- **`cco init` says daemon not reachable:** the launchd/systemd unit didn't start. Check service status with `launchctl print gui/$(id -u)/com.claude-code-observer` or `systemctl --user status claude-code-observer`.
+- **Log rotation:** v1 does not rotate `cco.log`. On Linux, drop a `logrotate` config; on macOS, truncate manually.
+
+## Stopping / Uninstall
+
+**macOS:**
+
+```bash
+launchctl bootout gui/$(id -u)/com.claude-code-observer
+rm ~/Library/LaunchAgents/com.claude-code-observer.plist
+```
+
+**Linux:**
+
+```bash
+systemctl --user disable --now claude-code-observer
+rm ~/.config/systemd/user/claude-code-observer.service
+```
+
+Data lives in `~/.claude-code-observer/`; remove the directory to wipe state.
 
 <!-- CONTRIBUTING -->
 
