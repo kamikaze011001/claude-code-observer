@@ -128,3 +128,18 @@ func assertCount(t *testing.T, db *sql.DB, table string, want int) {
 func silentLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
+
+func TestPruner_Tick_PropagatesErrorWhenRepoClosed(t *testing.T) {
+	repo := openTempRepo(t)
+	// Force both DELETEs to fail by closing the DB first.
+	if err := repo.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	clock := scheduler.NewFakeClock(time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC))
+	p := New(repo, clock, 30*24*time.Hour, silentLogger())
+	err := p.Tick(context.Background())
+	if err == nil {
+		t.Fatal("Tick on closed repo: want error, got nil")
+	}
+}
