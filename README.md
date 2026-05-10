@@ -28,7 +28,15 @@
 - One Go binary: ingests OTLP/gRPC on `localhost:4317`, writes SQLite, renders a TUI. No cloud, no account, no daemon you didn't install.
 - Per-project setup is one command (`cco init`) — drops seven OTel env vars into `.claude/settings.json` and probes the daemon.
 
-<!-- FEATURES -->
+## Features
+
+- Real-time ingestion of Claude Code OTLP logs and metrics over gRPC.
+- Local SQLite store — no network egress, full data ownership.
+- Bubble Tea TUI — session list, cost breakdown, tool-call detail, error log.
+- Per-project tagging via `OTEL_RESOURCE_ATTRIBUTES`'s `project.name`.
+- Single static binary — `go build` and you're done.
+- Unattended daemon — launchd plist + systemd user unit shipped.
+- Idempotent project setup — `cco init` is safe to re-run.
 
 <!-- INSTALL -->
 
