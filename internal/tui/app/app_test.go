@@ -22,6 +22,7 @@ func (v *fakeView) Update(m tea.Msg) (View, tea.Cmd) { v.lastMsg = m; return v, 
 func (v *fakeView) View(w, h int) string             { return v.title }
 func (v *fakeView) Title() string                    { return v.title }
 func (v *fakeView) ShortHelp() []key.Binding         { return nil }
+func (v *fakeView) Status() theme.PillState          { return theme.PillLive }
 
 func newAppWith(views ...View) *App {
 	a := New(theme.Default())

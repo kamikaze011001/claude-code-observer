@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -89,19 +91,47 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a.forwardTop(msg)
 }
 
-// View renders the body. Chrome rendering is added in Task 12.
+// View renders the full chrome (header + body + footer pill).
 func (a *App) View() string {
 	if len(a.stack) == 0 {
 		return ""
 	}
 	top := a.stack[len(a.stack)-1]
-	return top.View(a.width, a.height)
+	inner := a.safeRender(top)
+	return a.renderChrome(top, inner)
+}
+
+func (a *App) safeRender(v View) (out string) {
+	defer func() {
+		if r := recover(); r != nil {
+			out = a.theme.ErrorText.Render("⚠ VIEW ERROR — b TO RETURN")
+		}
+	}()
+	return v.View(a.width, a.height)
+}
+
+func (a *App) renderChrome(v View, body string) string {
+	title := a.theme.Heading.Render("CCO  │  " + v.Title())
+	pill := a.theme.Pill(v.Status())
+	helps := []string{}
+	for _, k := range v.ShortHelp() {
+		h := k.Help()
+		helps = append(helps, "["+h.Key+"] "+h.Desc)
+	}
+	footer := strings.Join(helps, "  ") + "    " + pill
+	return strings.Join([]string{title, body, footer}, "\n")
 }
 
 func (a *App) forwardTop(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if len(a.stack) == 0 {
 		return a, nil
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			a.lastErr = fmt.Errorf("view panic: %v", r)
+			a.consecErrs++
+		}
+	}()
 	top := a.stack[len(a.stack)-1]
 	updated, cmd := top.Update(msg)
 	a.stack[len(a.stack)-1] = updated

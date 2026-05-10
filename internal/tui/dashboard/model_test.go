@@ -9,6 +9,7 @@ import (
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 )
 
 func TestModel_InitReturnsFetchCmd(t *testing.T) {
@@ -80,3 +81,30 @@ func TestModel_InitCmdInvocable(t *testing.T) {
 }
 
 var _ tea.Cmd = nil
+
+func TestModel_StatusNoDaemon(t *testing.T) {
+	m := New(nil)
+	if got := m.Status(); got != theme.PillNoDaemon {
+		t.Fatalf("status: got %v want PillNoDaemon", got)
+	}
+}
+
+func TestModel_StatusStaleOnError(t *testing.T) {
+	m := New(nil)
+	m.stale = true
+	m.lastOK = time.Now()
+	if got := m.Status(); got != theme.PillStale {
+		t.Fatalf("status: got %v want PillStale", got)
+	}
+}
+
+func TestModel_StatusLiveWithRecentEvent(t *testing.T) {
+	m := New(nil)
+	fakeNow := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	m.now = func() time.Time { return fakeNow }
+	m.lastOK = fakeNow
+	m.snap.LatestEventTS = fakeNow.Add(-5 * time.Second).UnixNano()
+	if got := m.Status(); got != theme.PillLive {
+		t.Fatalf("status: got %v want PillLive", got)
+	}
+}

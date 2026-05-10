@@ -3,6 +3,8 @@ package app
 import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 )
 
 // View is the contract every page in the TUI implements. The shell
@@ -19,4 +21,6 @@ type View interface {
 	Title() string
 	// ShortHelp lists the keys for the footer strip.
 	ShortHelp() []key.Binding
+	// Status reports the current pill state for the footer.
+	Status() theme.PillState
 }
