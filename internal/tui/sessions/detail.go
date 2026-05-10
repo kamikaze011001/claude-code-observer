@@ -3,6 +3,8 @@ package sessions
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -148,9 +150,47 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 }
 
 // View renders the session event timeline.
-// Implemented in Task 9.
 func (m *Detail) View(width, height int) string {
-	return ""
+	var b strings.Builder
+	b.WriteString(defaultTheme.Heading.Render(m.Title()))
+	b.WriteString("\n\n")
+
+	if len(m.events) == 0 {
+		b.WriteString(defaultTheme.MutedText.Render("no events for this session"))
+		return b.String()
+	}
+
+	header := fmt.Sprintf("%-19s %-26s %s", "TIME", "EVENT", "SUMMARY")
+	b.WriteString(defaultTheme.MutedText.Render(header))
+	b.WriteString("\n")
+
+	for i, e := range m.events {
+		line := fmt.Sprintf("%-19s %-26s %s",
+			e.TS.Format("2006-01-02 15:04:05"),
+			e.EventName,
+			e.Summary,
+		)
+		isPrompt := e.EventName == "claude_code.user_prompt" && e.PromptID != ""
+		switch {
+		case i == m.cursor && isPrompt:
+			line = defaultTheme.AccentText.Render("▶ " + line)
+		case i == m.cursor:
+			line = defaultTheme.AccentText.Render("▶ " + line)
+		case isPrompt:
+			line = "  " + defaultTheme.AccentText.Render(line)
+		default:
+			line = "  " + defaultTheme.MutedText.Render(line)
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	if m.hasMore {
+		b.WriteString("\n")
+		b.WriteString(defaultTheme.MutedText.Render("older events available — keyset cursor not yet wired (use SQL)"))
+	}
+	b.WriteString("\n")
+	b.WriteString(defaultTheme.MutedText.Render("enter on a bold prompt row opens prompt detail"))
+	return b.String()
 }
 
 func (m *Detail) fetchCmd() tea.Cmd {
