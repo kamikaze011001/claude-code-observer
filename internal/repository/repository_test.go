@@ -83,6 +83,26 @@ func TestOpen_WALModeAndForeignKeys(t *testing.T) {
 	}
 }
 
+func TestOpen_FailsWhenHomeIsUnderAFile(t *testing.T) {
+	parent := t.TempDir()
+	blocker := filepath.Join(parent, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write blocker: %v", err)
+	}
+	// Trying to use a path under a regular file forces MkdirAll to fail.
+	home := filepath.Join(blocker, "nested")
+	if _, err := Open(home); err == nil {
+		t.Fatalf("expected error opening under a file path, got nil")
+	}
+}
+
+func TestClose_NilSafe(t *testing.T) {
+	r := &Repository{}
+	if err := r.Close(); err != nil {
+		t.Errorf("Close on zero-value Repository: %v", err)
+	}
+}
+
 func TestOpen_CreatesHomeDirIfMissing(t *testing.T) {
 	parent := t.TempDir()
 	home := filepath.Join(parent, "nested", "home")

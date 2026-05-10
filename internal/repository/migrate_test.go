@@ -120,6 +120,45 @@ func TestRunMigrations_OrdersByVersion(t *testing.T) {
 	}
 }
 
+func TestPathBase(t *testing.T) {
+	cases := map[string]string{
+		"a/b/c.sql":            "c.sql",
+		"plain.sql":            "plain.sql",
+		"migrations/0001_x.sql": "0001_x.sql",
+	}
+	for in, want := range cases {
+		if got := pathBase(in); got != want {
+			t.Errorf("pathBase(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestParseLeadingVersion(t *testing.T) {
+	cases := []struct {
+		in   string
+		ok   bool
+		want int
+	}{
+		{"0001_init.sql", true, 1},
+		{"0042_seed.sql", true, 42},
+		{"no_underscore_at_start", false, 0}, // "no" before underscore can't parse as int
+		{"_starts_with_underscore.sql", false, 0},
+		{"plain.sql", false, 0},
+	}
+	for _, c := range cases {
+		got, err := parseLeadingVersion(c.in)
+		if c.ok && err != nil {
+			t.Errorf("parseLeadingVersion(%q) unexpected error: %v", c.in, err)
+		}
+		if !c.ok && err == nil {
+			t.Errorf("parseLeadingVersion(%q) expected error, got %d", c.in, got)
+		}
+		if c.ok && got != c.want {
+			t.Errorf("parseLeadingVersion(%q) = %d, want %d", c.in, got, c.want)
+		}
+	}
+}
+
 func TestRunMigrations_EmbeddedInitial(t *testing.T) {
 	db := openMemory(t)
 	sub, err := fs.Sub(migrationsFS, ".")
