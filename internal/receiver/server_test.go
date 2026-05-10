@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -156,5 +157,34 @@ func TestMetricsServer_IngesterError(t *testing.T) {
 	}
 	if got := status.Code(err); got != codes.Unavailable {
 		t.Fatalf("status = %v, want Unavailable", got)
+	}
+}
+
+func TestServer_StartAndStop(t *testing.T) {
+	srv := NewServer(Config{
+		Addr:    "127.0.0.1:0", // random free port
+		Logs:    &fakeLogIngester{},
+		Metrics: &fakeMetricIngester{},
+	})
+	if err := srv.Listen(); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	addr := srv.Addr()
+	if addr == "" || addr == "127.0.0.1:0" {
+		t.Fatalf("Addr() = %q, want resolved port", addr)
+	}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.Serve() }()
+
+	srv.Stop()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Serve returned %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Serve did not return after Stop")
 	}
 }
