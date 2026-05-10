@@ -16,3 +16,7 @@ coverage.txt
 .vscode/
 .idea/
 .DS_Store
+
+# Claude Code / agent config (local)
+.claude/
+.agents/
