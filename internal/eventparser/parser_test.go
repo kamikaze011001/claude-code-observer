@@ -145,8 +145,8 @@ func TestParse_APIError_Synth(t *testing.T) {
 			kvStr("session.id", "s"),
 			kvStr("prompt.id", "p"),
 			kvStr("model", "claude-opus-4-7"),
-			kvStr("error_message", "rate limit"),
-			kvInt("http_status_code", 429),
+			kvStr("error", "rate limit"),
+			kvInt("status_code", 429),
 			kvInt("attempt", 3),
 		},
 	}
@@ -154,11 +154,11 @@ func TestParse_APIError_Synth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ev.Attrs["error_message"] != "rate limit" {
-		t.Errorf("error_message = %v", ev.Attrs["error_message"])
+	if ev.Attrs["error"] != "rate limit" {
+		t.Errorf("error = %v", ev.Attrs["error"])
 	}
-	if ev.Attrs["http_status_code"] != int64(429) {
-		t.Errorf("http_status_code = %v", ev.Attrs["http_status_code"])
+	if ev.Attrs["status_code"] != int64(429) {
+		t.Errorf("status_code = %v", ev.Attrs["status_code"])
 	}
 }
 
