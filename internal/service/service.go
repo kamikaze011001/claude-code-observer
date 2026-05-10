@@ -52,7 +52,7 @@ func (s *Service) IngestLogs(ctx context.Context, req *collogspb.ExportLogsServi
 			}
 		}
 	}
-	if err := s.repo.InsertEvents(ctx, events); err != nil {
+	if err := s.repo.InsertEventsAndApplyRollups(ctx, events); err != nil {
 		return fmt.Errorf("insert events: %w", err)
 	}
 	return nil
