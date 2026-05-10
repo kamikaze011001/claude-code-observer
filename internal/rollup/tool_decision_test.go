@@ -6,11 +6,11 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/domain"
 )
 
-func TestApplyToolDecision_DenyBumpsToolDenied(t *testing.T) {
+func TestApplyToolDecision_RejectBumpsToolDenied(t *testing.T) {
 	ev := domain.Event{
 		TS: 1000, SessionID: "s1",
-		EventName: "claude_code.tool_decision",
-		Attrs:     map[string]any{"decision": "deny"},
+		EventName: domain.EventToolDecision,
+		Attrs:     map[string]any{"decision": "reject"},
 	}
 	ops := Apply(ev)
 	if len(ops) != 1 {
@@ -22,11 +22,11 @@ func TestApplyToolDecision_DenyBumpsToolDenied(t *testing.T) {
 	}
 }
 
-func TestApplyToolDecision_AllowDoesNotBumpToolDenied(t *testing.T) {
+func TestApplyToolDecision_AcceptDoesNotBumpToolDenied(t *testing.T) {
 	ev := domain.Event{
 		TS: 1000, SessionID: "s1",
-		EventName: "claude_code.tool_decision",
-		Attrs:     map[string]any{"decision": "allow"},
+		EventName: domain.EventToolDecision,
+		Attrs:     map[string]any{"decision": "accept"},
 	}
 	ops := Apply(ev)
 	if len(ops) != 1 {
@@ -40,7 +40,7 @@ func TestApplyToolDecision_AllowDoesNotBumpToolDenied(t *testing.T) {
 func TestApplyToolDecision_MissingDecisionDoesNotBump(t *testing.T) {
 	ev := domain.Event{
 		TS: 1000, SessionID: "s1",
-		EventName: "claude_code.tool_decision",
+		EventName: domain.EventToolDecision,
 	}
 	ops := Apply(ev)
 	if ops[0].Args[13] != int64(0) {
