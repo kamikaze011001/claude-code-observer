@@ -203,3 +203,29 @@ func TestParse_SubagentDispatch_Synth(t *testing.T) {
 		t.Errorf("child_session.id = %v", ev.Attrs["child_session.id"])
 	}
 }
+
+func TestParse_PropagatesNewResourceAttrs(t *testing.T) {
+	rec := &logspb.LogRecord{
+		TimeUnixNano: 10,
+		Attributes: []*commonpb.KeyValue{
+			kvStr("event.name", "claude_code.user_prompt"),
+			kvStr("session.id", "s1"),
+		},
+	}
+	res := &resourcepb.Resource{
+		Attributes: []*commonpb.KeyValue{
+			kvStr("user.account_id", "user_01ABC"),
+			kvStr("terminal.type", "iTerm.app"),
+		},
+	}
+	ev, err := Parse(rec, res)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if ev.Attrs["user.account_id"] != "user_01ABC" {
+		t.Errorf("user.account_id = %v, want user_01ABC", ev.Attrs["user.account_id"])
+	}
+	if ev.Attrs["terminal.type"] != "iTerm.app" {
+		t.Errorf("terminal.type = %v, want iTerm.app", ev.Attrs["terminal.type"])
+	}
+}
