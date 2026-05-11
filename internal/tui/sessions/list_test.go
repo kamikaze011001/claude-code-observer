@@ -119,29 +119,6 @@ func TestSessionsListView_Golden(t *testing.T) {
 	}
 }
 
-// Legacy view golden tests — kept to catch regressions; goldens are regenerated
-// with -update after the View rewrite.
-func TestList_View_Empty(t *testing.T) {
-	t.Parallel()
-	m := NewList(nil, nil)
-	out := m.View(80, 20)
-	goldenList(t, "list_empty_legacy", out)
-}
-
-func TestList_View_OnePage(t *testing.T) {
-	t.Parallel()
-	m := NewList(nil, nil)
-	m.rows = []readstore.SessionRow{
-		{SessionID: "abc123def", ProjectName: "claude-code-observer", StartedAt: mustTime("2026-05-10T12:43:01Z"), DurationSec: 842, CostUSD: 0.42, Prompts: 7, Live: true},
-		{SessionID: "def456abc", ProjectName: "my-other-project", StartedAt: mustTime("2026-05-10T12:18:55Z"), DurationSec: 4920, CostUSD: 1.84, Prompts: 23, Live: false},
-		{SessionID: "ghi789", ProjectName: "", StartedAt: mustTime("2026-05-10T11:00:00Z"), DurationSec: 60, CostUSD: 0.01, Prompts: 1, Live: false},
-	}
-	m.cursor = 1
-	m.lastOK = mustTime("2026-05-10T12:43:02Z")
-	out := m.View(100, 20)
-	goldenList(t, "list_one_page_legacy", out)
-}
-
 func mustTime(s string) time.Time {
 	tm, err := time.Parse(time.RFC3339, s)
 	if err != nil {

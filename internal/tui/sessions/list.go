@@ -203,7 +203,7 @@ func (m *List) View(width, height int) string {
 
 	// Header: brand · sessions · page · pill
 	brand := th.Title.Render(th.Glyphs.Brand + " cco")
-	bread := th.Muted2.Render(" · sessions    page " + itoaPage(len(m.prevCurs)+1))
+	bread := th.Muted2.Render(fmt.Sprintf(" · sessions    page %d", len(m.prevCurs)+1))
 	pill := component.StatusPill(th, m.statusFor())
 	headerRight := lipgloss.NewStyle().Width(width - lipgloss.Width(brand) - lipgloss.Width(bread)).Align(lipgloss.Right).Render(pill)
 	header := lipgloss.JoinHorizontal(lipgloss.Top, brand, bread, headerRight)
@@ -262,8 +262,6 @@ func defaultProject(s string) string {
 	}
 	return s
 }
-
-func itoaPage(n int) string { return fmt.Sprintf("%d", n) }
 
 func formatColHeader(w int) string {
 	// Column widths must match SessionRow constants exactly.
@@ -346,10 +344,3 @@ func truncRunesView(s string, n int) string {
 	return string(r[:n-1]) + "…"
 }
 
-// liveBadge is kept for reference but SessionRow handles live badges now.
-func liveBadge(th *theme.Theme, live bool) string {
-	if !live {
-		return ""
-	}
-	return th.Pill(theme.PillLive)
-}
