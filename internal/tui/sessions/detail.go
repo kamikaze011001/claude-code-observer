@@ -79,6 +79,8 @@ func (m *Detail) ShortHelp() []key.Binding {
 	return []key.Binding{
 		m.keys.Up,
 		m.keys.Down,
+		m.keys.PgUp,
+		m.keys.PgDn,
 		m.keys.Enter,
 		key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "back")),
 		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
