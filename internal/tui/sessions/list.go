@@ -190,7 +190,7 @@ func (m *List) View(width, height int) string {
 	}
 
 	const projW = 20
-	header := fmt.Sprintf("%-3s %-16s %-*s %-9s %-7s %-7s %s",
+	header := fmt.Sprintf("  %-3s %-16s %-*s %-9s %-7s %-7s %s",
 		"#", "STARTED", projW, "PROJECT", "DURATION", "COST", "PROMPTS", "STATUS")
 	b.WriteString(defaultTheme.MutedText.Render(header))
 	b.WriteString("\n")

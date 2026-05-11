@@ -112,6 +112,24 @@ func TestDetail_View_Empty(t *testing.T) {
 	goldenDetail(t, "detail_empty", out)
 }
 
+func TestDetail_View_Scrolled(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "abcdef123456").(*Detail)
+	base := mustTime("2026-05-10T12:00:00Z")
+	for i := 0; i < 30; i++ {
+		m.events = append(m.events, readstore.EventRow{
+			TS:        base.Add(time.Duration(i) * time.Second),
+			EventName: "tool_result",
+			Summary:   "Read 1ms",
+		})
+	}
+	m.cursor = 20
+	m.hasMore = true
+	m.lastOK = base.Add(31 * time.Second)
+	out := m.View(100, 12)
+	goldenDetail(t, "detail_scrolled", out)
+}
+
 func TestDetail_View_Mixed(t *testing.T) {
 	t.Parallel()
 	m := NewDetail(nil, "abcdef123456").(*Detail)
@@ -186,5 +204,183 @@ func TestDetail_ErrMsgSetsStale(t *testing.T) {
 	m.Update(app.ErrMsg{Err: errSentinel("boom")})
 	if !m.stale {
 		t.Fatal("expected stale")
+	}
+}
+
+func TestDetail_PgDn_StepsCursorByViewport(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	for i := 0; i < 30; i++ {
+		m.events = append(m.events, readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
+	}
+	m.viewport = 10
+	m.cursor = 0
+	upd, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if got := upd.(*Detail).cursor; got != 10 {
+		t.Fatalf("cursor=%d want 10", got)
+	}
+}
+
+func TestDetail_PgUp_StepsCursorByViewport(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	for i := 0; i < 30; i++ {
+		m.events = append(m.events, readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
+	}
+	m.viewport = 10
+	m.cursor = 25
+	upd, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if got := upd.(*Detail).cursor; got != 15 {
+		t.Fatalf("cursor=%d want 15", got)
+	}
+}
+
+func TestDetail_PgDn_ClampsAtLastEventWhenNoMore(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	for i := 0; i < 5; i++ {
+		m.events = append(m.events, readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
+	}
+	m.viewport = 10
+	m.cursor = 0
+	m.hasMore = false
+	upd, cmd := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if got := upd.(*Detail).cursor; got != 4 {
+		t.Fatalf("cursor=%d want 4 (last event)", got)
+	}
+	if cmd != nil {
+		t.Fatalf("expected nil cmd when hasMore=false; got one")
+	}
+}
+
+func TestDetail_PgDn_AtBottomTriggersFetchOlder(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{
+		{TS: mustTime("2026-05-10T12:00:01Z"), EventName: "tool_result"},
+		{TS: mustTime("2026-05-10T12:00:00Z"), EventName: "tool_result"},
+	}
+	m.viewport = 10
+	m.cursor = 1 // last loaded row
+	m.hasMore = true
+	upd, cmd := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if !upd.(*Detail).loadingOlder {
+		t.Fatal("expected loadingOlder=true after pgdn at bottom with hasMore")
+	}
+	if cmd == nil {
+		t.Fatal("expected fetch cmd")
+	}
+}
+
+func TestDetail_PgDn_DoesNotDoubleFetchWhileLoading(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{
+		{TS: mustTime("2026-05-10T12:00:00Z"), EventName: "tool_result"},
+	}
+	m.viewport = 10
+	m.cursor = 0
+	m.hasMore = true
+	m.loadingOlder = true
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if cmd != nil {
+		t.Fatal("expected nil cmd while loadingOlder=true")
+	}
+}
+
+func TestDetail_DetailOlderMsg_AppendsAndClearsLoading(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{
+		{TS: mustTime("2026-05-10T12:00:01Z"), EventName: "a"},
+		{TS: mustTime("2026-05-10T12:00:00Z"), EventName: "b"},
+	}
+	m.cursor = 1
+	m.offset = 0
+	m.loadingOlder = true
+	m.hasMore = true
+	msg := detailOlderMsg{
+		events: []readstore.EventRow{
+			{TS: mustTime("2026-05-10T11:59:59Z"), EventName: "c"},
+			{TS: mustTime("2026-05-10T11:59:58Z"), EventName: "d"},
+		},
+		hasMore: false,
+		at:      mustTime("2026-05-10T12:00:02Z"),
+	}
+	upd, _ := m.Update(msg)
+	d := upd.(*Detail)
+	if len(d.events) != 4 {
+		t.Fatalf("events len=%d want 4", len(d.events))
+	}
+	if d.events[3].EventName != "d" {
+		t.Fatalf("tail event = %q want d", d.events[3].EventName)
+	}
+	if d.loadingOlder {
+		t.Fatal("loadingOlder should be cleared")
+	}
+	if d.hasMore {
+		t.Fatal("hasMore should reflect msg")
+	}
+	if d.cursor != 1 || d.offset != 0 {
+		t.Fatalf("cursor/offset moved unexpectedly: cursor=%d offset=%d", d.cursor, d.offset)
+	}
+}
+
+func TestDetail_FetchOlderCmd_NilPoolReturnsErrMsg(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{
+		{TS: mustTime("2026-05-10T12:00:00Z"), EventName: "tool_result"},
+	}
+	cmd := m.fetchOlderCmd()
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	if _, ok := cmd().(app.ErrMsg); !ok {
+		t.Fatal("expected app.ErrMsg from nil-pool path")
+	}
+}
+
+func TestDetail_Tick_SuppressedWhenScrolled(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{{TS: time.Now(), EventName: "tool_result"}}
+	m.offset = 3
+	_, cmd := m.Update(app.TickMsg(time.Now()))
+	if cmd != nil {
+		t.Fatal("expected nil cmd while offset>0")
+	}
+}
+
+func TestDetail_Tick_SuppressedWhenPaginated(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	for i := 0; i < detailPageSize+1; i++ {
+		m.events = append(m.events, readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
+	}
+	_, cmd := m.Update(app.TickMsg(time.Now()))
+	if cmd != nil {
+		t.Fatal("expected nil cmd when older pages have been loaded")
+	}
+}
+
+func TestDetail_Tick_SuppressedWhileLoadingOlder(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{{TS: time.Now(), EventName: "tool_result"}}
+	m.loadingOlder = true
+	_, cmd := m.Update(app.TickMsg(time.Now()))
+	if cmd != nil {
+		t.Fatal("expected nil cmd while loadingOlder=true")
+	}
+}
+
+func TestDetail_Tick_RunsAtTopWithOnePage(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{{TS: time.Now(), EventName: "tool_result"}}
+	_, cmd := m.Update(app.TickMsg(time.Now()))
+	if cmd == nil {
+		t.Fatal("expected fetch cmd at top with one page loaded")
 	}
 }
