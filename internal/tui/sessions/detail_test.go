@@ -112,6 +112,24 @@ func TestDetail_View_Empty(t *testing.T) {
 	goldenDetail(t, "detail_empty", out)
 }
 
+func TestDetail_View_Scrolled(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "abcdef123456").(*Detail)
+	base := mustTime("2026-05-10T12:00:00Z")
+	for i := 0; i < 30; i++ {
+		m.events = append(m.events, readstore.EventRow{
+			TS:        base.Add(time.Duration(i) * time.Second),
+			EventName: "tool_result",
+			Summary:   "Read 1ms",
+		})
+	}
+	m.cursor = 20
+	m.hasMore = true
+	m.lastOK = base.Add(31 * time.Second)
+	out := m.View(100, 12)
+	goldenDetail(t, "detail_scrolled", out)
+}
+
 func TestDetail_View_Mixed(t *testing.T) {
 	t.Parallel()
 	m := NewDetail(nil, "abcdef123456").(*Detail)

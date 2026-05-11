@@ -163,7 +163,8 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 	return m, nil
 }
 
-// View renders the session event timeline.
+// View renders the session event timeline. Renders only the visible window
+// (events[offset:offset+viewport]) and slides offset to follow the cursor.
 func (m *Detail) View(width, height int) string {
 	var b strings.Builder
 	b.WriteString(defaultTheme.Heading.Render(m.Title()))
@@ -174,11 +175,19 @@ func (m *Detail) View(width, height int) string {
 		return b.String()
 	}
 
+	m.viewport = visibleRows(height)
+	clampOffset(m)
+
 	header := fmt.Sprintf("%-19s %-26s %s", "TIME", "EVENT", "SUMMARY")
 	b.WriteString(defaultTheme.MutedText.Render(header))
 	b.WriteString("\n")
 
-	for i, e := range m.events {
+	end := m.offset + m.viewport
+	if end > len(m.events) {
+		end = len(m.events)
+	}
+	for i := m.offset; i < end; i++ {
+		e := m.events[i]
 		line := fmt.Sprintf("%-19s %-26s %s",
 			e.TS.Format("2006-01-02 15:04:05"),
 			e.EventName,
@@ -198,9 +207,13 @@ func (m *Detail) View(width, height int) string {
 		b.WriteString(line)
 		b.WriteString("\n")
 	}
-	if m.hasMore {
+	switch {
+	case m.loadingOlder:
 		b.WriteString("\n")
-		b.WriteString(defaultTheme.MutedText.Render("older events available — keyset cursor not yet wired (use SQL)"))
+		b.WriteString(defaultTheme.MutedText.Render("loading older events…"))
+	case m.hasMore:
+		b.WriteString("\n")
+		b.WriteString(defaultTheme.MutedText.Render("press pgdn for older events"))
 	}
 	b.WriteString("\n")
 	b.WriteString(defaultTheme.MutedText.Render("enter on a bold prompt row opens prompt detail"))
@@ -225,3 +238,41 @@ func (m *Detail) fetchCmd() tea.Cmd {
 }
 
 var newPromptDetail = prompt.New
+
+// visibleRows converts the terminal height passed to View into the number of
+// event rows the body can show. Reserves chromeReserved lines for the chrome
+// (title + footer), the view's own title block + column header, and the two
+// hint lines at the bottom. Falls back to a sensible default before the
+// first WindowSizeMsg.
+func visibleRows(height int) int {
+	const chromeReserved = 7
+	if height <= 0 {
+		return 20
+	}
+	v := height - chromeReserved
+	if v < 5 {
+		v = 5
+	}
+	return v
+}
+
+// clampOffset slides m.offset so the cursor is in the visible window and the
+// window itself stays within the loaded events range.
+func clampOffset(m *Detail) {
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	if m.cursor >= m.offset+m.viewport {
+		m.offset = m.cursor - m.viewport + 1
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+	maxOffset := len(m.events) - 1
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if m.offset > maxOffset {
+		m.offset = maxOffset
+	}
+}
