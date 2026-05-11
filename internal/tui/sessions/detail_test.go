@@ -340,3 +340,47 @@ func TestDetail_FetchOlderCmd_NilPoolReturnsErrMsg(t *testing.T) {
 		t.Fatal("expected app.ErrMsg from nil-pool path")
 	}
 }
+
+func TestDetail_Tick_SuppressedWhenScrolled(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{{TS: time.Now(), EventName: "tool_result"}}
+	m.offset = 3
+	_, cmd := m.Update(app.TickMsg(time.Now()))
+	if cmd != nil {
+		t.Fatal("expected nil cmd while offset>0")
+	}
+}
+
+func TestDetail_Tick_SuppressedWhenPaginated(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	for i := 0; i < detailPageSize+1; i++ {
+		m.events = append(m.events, readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
+	}
+	_, cmd := m.Update(app.TickMsg(time.Now()))
+	if cmd != nil {
+		t.Fatal("expected nil cmd when older pages have been loaded")
+	}
+}
+
+func TestDetail_Tick_SuppressedWhileLoadingOlder(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{{TS: time.Now(), EventName: "tool_result"}}
+	m.loadingOlder = true
+	_, cmd := m.Update(app.TickMsg(time.Now()))
+	if cmd != nil {
+		t.Fatal("expected nil cmd while loadingOlder=true")
+	}
+}
+
+func TestDetail_Tick_RunsAtTopWithOnePage(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{{TS: time.Now(), EventName: "tool_result"}}
+	_, cmd := m.Update(app.TickMsg(time.Now()))
+	if cmd == nil {
+		t.Fatal("expected fetch cmd at top with one page loaded")
+	}
+}

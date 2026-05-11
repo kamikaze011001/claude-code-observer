@@ -101,7 +101,7 @@ func (m *Detail) Status() theme.PillState {
 func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 	switch v := msg.(type) {
 	case app.TickMsg:
-		if m.inFlight {
+		if m.inFlight || m.loadingOlder || m.offset > 0 || len(m.events) > detailPageSize {
 			return m, nil
 		}
 		m.inFlight = true
@@ -118,6 +118,7 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 		m.inFlight = false
 		m.stale = false
 		m.cursor = 0
+		m.offset = 0
 		for i, e := range m.events {
 			if e.TS.Equal(cur.TS) && e.EventName == cur.EventName {
 				m.cursor = i
