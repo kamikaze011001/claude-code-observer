@@ -78,29 +78,6 @@ func truncToWidth(s string, w int) string {
 	return runewidth.Truncate(s, w, "…")
 }
 
-func humanDuration(sec int64) string {
-	if sec <= 0 {
-		return ""
-	}
-	if sec < 60 {
-		return fmt.Sprintf("%ds", sec)
-	}
-	if sec < 3600 {
-		return fmt.Sprintf("%dm%02ds", sec/60, sec%60)
-	}
-	return fmt.Sprintf("%dh%02dm", sec/3600, (sec%3600)/60)
-}
-
-func humanInt(n int64) string {
-	switch {
-	case n >= 1_000_000:
-		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
-	case n >= 1_000:
-		return fmt.Sprintf("%dk", n/1_000)
-	}
-	return fmt.Sprintf("%d", n)
-}
-
 // EventRowData is one row in the session detail timeline.
 type EventRowData struct {
 	Time      time.Time

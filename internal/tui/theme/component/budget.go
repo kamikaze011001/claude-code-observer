@@ -25,10 +25,17 @@ func (b *Builder) Gutters(count, width int) {
 	b.used += count * width
 }
 
-// Flex reserves the remainder for the named column.
-func (b *Builder) Flex(name string, w int) {
+// Flex claims the remaining budget for the named column and returns the
+// width allocated. Use this for the single column that should expand to
+// fill the row.
+func (b *Builder) Flex(name string) int {
+	w := b.total - b.used
+	if w < 0 {
+		w = 0
+	}
 	b.cols[name] = w
 	b.used += w
+	return w
 }
 
 // Remaining returns cells still available.
