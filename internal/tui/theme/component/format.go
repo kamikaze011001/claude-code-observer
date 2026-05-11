@@ -17,8 +17,8 @@ func humanDuration(sec int64) string {
 	return fmt.Sprintf("%dh%02dm", sec/3600, (sec%3600)/60)
 }
 
-// humanInt formats large integers compactly: "1.2M", "38k", "999".
-func humanInt(n int64) string {
+// HumanInt formats large integers compactly: "1.2M", "38k", "999".
+func HumanInt(n int64) string {
 	switch {
 	case n >= 1_000_000:
 		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)

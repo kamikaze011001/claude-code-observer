@@ -14,7 +14,7 @@ import (
 )
 
 func TestModel_InitReturnsFetchCmd(t *testing.T) {
-	m := New(nil)
+	m := New(nil, nil)
 	cmd := m.Init()
 	if cmd == nil {
 		t.Fatalf("Init should return a fetch cmd")
@@ -22,7 +22,7 @@ func TestModel_InitReturnsFetchCmd(t *testing.T) {
 }
 
 func TestModel_TickWhileInFlightSkipsFetch(t *testing.T) {
-	m := New(nil)
+	m := New(nil, nil)
 	m.inFlight = true
 	_, cmd := m.Update(app.TickMsg(time.Now()))
 	if cmd != nil {
@@ -31,7 +31,7 @@ func TestModel_TickWhileInFlightSkipsFetch(t *testing.T) {
 }
 
 func TestModel_DataMsgClearsInFlightAndStoresSnapshot(t *testing.T) {
-	m := New(nil)
+	m := New(nil, nil)
 	m.inFlight = true
 	snap := readstore.Snapshot{Today: readstore.WindowStats{CostUSD: 1.23}}
 	top := []readstore.TopSession{{SessionID: "x"}}
@@ -49,7 +49,7 @@ func TestModel_DataMsgClearsInFlightAndStoresSnapshot(t *testing.T) {
 }
 
 func TestModel_ErrMsgKeepsLastSnapshotAndSetsStale(t *testing.T) {
-	m := New(nil)
+	m := New(nil, nil)
 	m.snap.Today.CostUSD = 9.99
 	m.inFlight = true
 	updated, _ := m.Update(app.ErrMsg{Err: errors.New("boom")})
@@ -68,7 +68,7 @@ func TestModel_ErrMsgKeepsLastSnapshotAndSetsStale(t *testing.T) {
 var _ app.View = (*Model)(nil)
 
 func TestModel_InitCmdInvocable(t *testing.T) {
-	m := New(nil)
+	m := New(nil, nil)
 	cmd := m.Init()
 	msg := cmd()
 	if msg == nil {
@@ -82,14 +82,14 @@ func TestModel_InitCmdInvocable(t *testing.T) {
 }
 
 func TestModel_StatusNoDaemon(t *testing.T) {
-	m := New(nil)
+	m := New(nil, nil)
 	if got := m.Status(); got != theme.PillNoDaemon {
 		t.Fatalf("status: got %v want PillNoDaemon", got)
 	}
 }
 
 func TestModel_StatusStaleOnError(t *testing.T) {
-	m := New(nil)
+	m := New(nil, nil)
 	m.stale = true
 	m.lastOK = time.Now()
 	if got := m.Status(); got != theme.PillStale {
@@ -98,7 +98,7 @@ func TestModel_StatusStaleOnError(t *testing.T) {
 }
 
 func TestModel_StatusLiveWithRecentEvent(t *testing.T) {
-	m := New(nil)
+	m := New(nil, nil)
 	fakeNow := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
 	m.now = func() time.Time { return fakeNow }
 	m.lastOK = fakeNow
@@ -108,9 +108,64 @@ func TestModel_StatusLiveWithRecentEvent(t *testing.T) {
 	}
 }
 
+func TestModel_CursorClampsAtBounds(t *testing.T) {
+	m := New(nil, nil)
+	m.recent = []readstore.TopSession{
+		{SessionID: "a"}, {SessionID: "b"}, {SessionID: "c"},
+	}
+	m.recentCursor = 0
+
+	// Up at top should stay at 0
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.recentCursor != 0 {
+		t.Fatalf("cursor should clamp at 0, got %d", m.recentCursor)
+	}
+
+	// Down twice → 2
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.recentCursor != 2 {
+		t.Fatalf("cursor should be 2, got %d", m.recentCursor)
+	}
+
+	// Down again should clamp at 2 (len-1)
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.recentCursor != 2 {
+		t.Fatalf("cursor should clamp at 2, got %d", m.recentCursor)
+	}
+}
+
+func TestModel_EnterEmitsPushDetail(t *testing.T) {
+	m := New(nil, nil)
+	m.recent = []readstore.TopSession{
+		{SessionID: "sess-xyz"},
+	}
+	m.recentCursor = 0
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("Enter on non-empty recent should return a cmd")
+	}
+	msg := cmd()
+	push, ok := msg.(app.PushViewMsg)
+	if !ok {
+		t.Fatalf("msg=%T want PushViewMsg", msg)
+	}
+	if push.V == nil {
+		t.Fatal("pushed view is nil")
+	}
+}
+
+func TestModel_EnterNoOpWhenEmpty(t *testing.T) {
+	m := New(nil, nil)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil {
+		t.Fatal("Enter with empty recent should not return a cmd")
+	}
+}
+
 func TestModel_KeySEmitsPushSessionsList(t *testing.T) {
 	t.Parallel()
-	m := New(nil)
+	m := New(nil, nil)
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
 	if cmd == nil {
 		t.Fatal("no cmd returned for 's'")

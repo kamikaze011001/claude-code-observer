@@ -20,6 +20,25 @@ type Delta struct {
 	Text      string // e.g. "+12%" or "+$0.41"
 }
 
+// RenderDeltaInline renders a one-line delta indicator: glyph + space + text,
+// coloured green (up), red (down), or muted (flat).
+func RenderDeltaInline(t *theme.Theme, dir Direction, text string) string {
+	var glyph string
+	var style lipgloss.Style
+	switch dir {
+	case DeltaUp:
+		glyph = t.Glyphs.DeltaUp
+		style = lipgloss.NewStyle().Foreground(t.Palette.Green)
+	case DeltaDown:
+		glyph = t.Glyphs.DeltaDown
+		style = lipgloss.NewStyle().Foreground(t.Palette.Red)
+	default:
+		glyph = t.Glyphs.DeltaFlat
+		style = t.Muted2
+	}
+	return style.Render(glyph + " " + text)
+}
+
 // KPI renders one row: "<label>  <value>  <delta?>" padded to width.
 func KPI(t *theme.Theme, label, value string, d *Delta, width int) string {
 	lbl := t.Label.Render(label)

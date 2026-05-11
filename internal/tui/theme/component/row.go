@@ -48,7 +48,7 @@ func SessionRow(t *theme.Theme, r SessionRowData, selected bool, width int) stri
 	dur := padRight(humanDuration(r.DurationSec), durW)
 	cost := padRight(fmt.Sprintf("$%.2f", r.CostUSD), costW)
 	prompts := padRight(fmt.Sprintf("%d", r.Prompts), prW)
-	tokens := padRight(humanInt(r.Tokens), tokW)
+	tokens := padRight(HumanInt(r.Tokens), tokW)
 	live := padRight("", liveW)
 	if r.Live {
 		live = padRight(StatusPill(t, StatusLive), liveW)

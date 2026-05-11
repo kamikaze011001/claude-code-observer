@@ -29,8 +29,8 @@ func TestHumanInt(t *testing.T) {
 		{1_000_000, "1.0M"}, {1_500_000, "1.5M"},
 	}
 	for _, c := range cases {
-		if got := humanInt(c.n); got != c.want {
-			t.Errorf("humanInt(%d) = %q want %q", c.n, got, c.want)
+		if got := HumanInt(c.n); got != c.want {
+			t.Errorf("HumanInt(%d) = %q want %q", c.n, got, c.want)
 		}
 	}
 }

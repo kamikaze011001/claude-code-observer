@@ -32,7 +32,7 @@ func newTUICmd() *cobra.Command {
 			colorFGBG := os.Getenv("COLORFGBG")
 			th, _, _ := theme.Resolve(themeName, iconsName, envTheme, envIcons, colorFGBG)
 			shell := app.New(th)
-			shell.Push(dashboard.New(pool))
+			shell.Push(dashboard.New(pool, &th))
 
 			prog := tea.NewProgram(shell, tea.WithAltScreen(), tea.WithContext(cmd.Context()))
 			if _, err := prog.Run(); err != nil {
