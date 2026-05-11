@@ -206,3 +206,49 @@ func TestDetail_ErrMsgSetsStale(t *testing.T) {
 		t.Fatal("expected stale")
 	}
 }
+
+func TestDetail_PgDn_StepsCursorByViewport(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	for i := 0; i < 30; i++ {
+		m.events = append(m.events, readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
+	}
+	m.viewport = 10
+	m.cursor = 0
+	upd, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if got := upd.(*Detail).cursor; got != 10 {
+		t.Fatalf("cursor=%d want 10", got)
+	}
+}
+
+func TestDetail_PgUp_StepsCursorByViewport(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	for i := 0; i < 30; i++ {
+		m.events = append(m.events, readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
+	}
+	m.viewport = 10
+	m.cursor = 25
+	upd, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if got := upd.(*Detail).cursor; got != 15 {
+		t.Fatalf("cursor=%d want 15", got)
+	}
+}
+
+func TestDetail_PgDn_ClampsAtLastEventWhenNoMore(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	for i := 0; i < 5; i++ {
+		m.events = append(m.events, readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
+	}
+	m.viewport = 10
+	m.cursor = 0
+	m.hasMore = false
+	upd, cmd := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if got := upd.(*Detail).cursor; got != 4 {
+		t.Fatalf("cursor=%d want 4 (last event)", got)
+	}
+	if cmd != nil {
+		t.Fatalf("expected nil cmd when hasMore=false; got one")
+	}
+}

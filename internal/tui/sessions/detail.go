@@ -145,6 +145,24 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 			m.cursor = 0
 		case key.Matches(v, m.keys.Bottom):
 			m.cursor = max0(len(m.events) - 1)
+		case key.Matches(v, m.keys.PgDn):
+			step := m.viewport
+			if step < 1 {
+				step = 10
+			}
+			m.cursor += step
+			if m.cursor > len(m.events)-1 {
+				m.cursor = max0(len(m.events) - 1)
+			}
+		case key.Matches(v, m.keys.PgUp):
+			step := m.viewport
+			if step < 1 {
+				step = 10
+			}
+			m.cursor -= step
+			if m.cursor < 0 {
+				m.cursor = 0
+			}
 		case key.Matches(v, m.keys.Enter):
 			if len(m.events) == 0 {
 				return m, nil
