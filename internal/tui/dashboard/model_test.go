@@ -116,22 +116,22 @@ func TestModel_CursorClampsAtBounds(t *testing.T) {
 	m.recentCursor = 0
 
 	// Up at top should stay at 0
-	m.Update(tea.KeyMsg{Type: tea.KeyUp})
-	if m.recentCursor != 0 {
-		t.Fatalf("cursor should clamp at 0, got %d", m.recentCursor)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if updated.(*Model).recentCursor != 0 {
+		t.Fatalf("cursor should clamp at 0, got %d", updated.(*Model).recentCursor)
 	}
 
 	// Down twice → 2
-	m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	if m.recentCursor != 2 {
-		t.Fatalf("cursor should be 2, got %d", m.recentCursor)
+	updated, _ = updated.(*Model).Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ = updated.(*Model).Update(tea.KeyMsg{Type: tea.KeyDown})
+	if updated.(*Model).recentCursor != 2 {
+		t.Fatalf("cursor should be 2, got %d", updated.(*Model).recentCursor)
 	}
 
 	// Down again should clamp at 2 (len-1)
-	m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	if m.recentCursor != 2 {
-		t.Fatalf("cursor should clamp at 2, got %d", m.recentCursor)
+	updated, _ = updated.(*Model).Update(tea.KeyMsg{Type: tea.KeyDown})
+	if updated.(*Model).recentCursor != 2 {
+		t.Fatalf("cursor should clamp at 2, got %d", updated.(*Model).recentCursor)
 	}
 }
 
@@ -150,8 +150,8 @@ func TestModel_EnterEmitsPushDetail(t *testing.T) {
 	if !ok {
 		t.Fatalf("msg=%T want PushViewMsg", msg)
 	}
-	if push.V == nil {
-		t.Fatal("pushed view is nil")
+	if _, isDetail := push.V.(*sessions.Detail); !isDetail {
+		t.Fatalf("pushed view is %T, want *sessions.Detail", push.V)
 	}
 }
 

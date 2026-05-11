@@ -151,8 +151,8 @@ func (m *Model) fetchCmd() tea.Cmd {
 		}
 		recent, err := readstore.RecentSessionsToday(ctx, pool, now(), 5)
 		if err != nil {
-			// non-fatal: log pattern — return snap/top with empty recent
-			recent = nil
+			// surface via ErrMsg consistent with DashboardSnapshot error handling above
+			return app.ErrMsg{Err: err}
 		}
 		return dataMsg{snap: snap, top: top, recent: recent, at: now()}
 	}

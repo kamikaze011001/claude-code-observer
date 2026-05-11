@@ -15,13 +15,13 @@ import (
 // resolvedTheme returns the model's theme pointer if set, else a pointer to
 // the package-level default. This avoids a nil-deref in tests that set only
 // specific model fields.
-var _defaultTheme = func() *theme.Theme { t := theme.Default(); return &t }()
+var fallbackTheme = func() *theme.Theme { t := theme.Default(); return &t }()
 
 func (m *Model) th() *theme.Theme {
 	if m.theme != nil {
 		return m.theme
 	}
-	return _defaultTheme
+	return fallbackTheme
 }
 
 // View renders the dashboard body at the given terminal dimensions.
@@ -33,30 +33,19 @@ func (m *Model) View(width, height int) string {
 
 	var sections []string
 
-	// ── header ────────────────────────────────────────────────────────────────
 	sections = append(sections, m.renderHeader(t, width))
-
-	// ── three window cards ────────────────────────────────────────────────────
 	sections = append(sections, m.renderWindowCards(t, width))
 
-	// ── today-vs-yesterday delta strip ───────────────────────────────────────
 	if delta := m.renderDeltaStrip(t, width); delta != "" {
 		sections = append(sections, delta)
 	}
 
-	// ── top sessions today (read-only) ───────────────────────────────────────
 	sections = append(sections, m.renderTopSessions(t, width))
-
-	// ── recent sessions (cursor) ─────────────────────────────────────────────
 	sections = append(sections, m.renderRecentSessions(t, width))
-
-	// ── help bar ─────────────────────────────────────────────────────────────
 	sections = append(sections, m.renderHelpBar(t, width))
 
 	return strings.Join(sections, "\n")
 }
-
-// ── header ────────────────────────────────────────────────────────────────────
 
 func (m *Model) renderHeader(t *theme.Theme, width int) string {
 	brand := t.Title.Render(t.Glyphs.Brand + " cco")
@@ -82,10 +71,8 @@ func (m *Model) renderHeader(t *theme.Theme, width int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPadded, pill)
 }
 
-// ── window cards ─────────────────────────────────────────────────────────────
-
 func (m *Model) renderWindowCards(t *theme.Theme, width int) string {
-	cardW := (width - 4) / 3 // total outer width for each card; 4px gutter between 3 cards
+	cardW := (width - 2) / 3 // 3 cards + 2 single-space gutters = width
 	if cardW < 16 {
 		cardW = 16
 	}
@@ -129,8 +116,6 @@ func renderWindowCard(t *theme.Theme, title string, ws readstore.WindowStats, ca
 	return component.Card(t, title, b.String(), cardW)
 }
 
-// ── delta strip ───────────────────────────────────────────────────────────────
-
 func (m *Model) renderDeltaStrip(t *theme.Theme, width int) string {
 	y := m.snap.Yesterday
 	tod := m.snap.Today
@@ -172,8 +157,6 @@ func (m *Model) renderDeltaStrip(t *theme.Theme, width int) string {
 	return component.Card(t, "today vs yesterday", body, width)
 }
 
-// ── top sessions today ────────────────────────────────────────────────────────
-
 func (m *Model) renderTopSessions(t *theme.Theme, width int) string {
 	inner := width - 6 // border + padding
 	if inner < 8 {
@@ -201,8 +184,6 @@ func (m *Model) renderTopSessions(t *theme.Theme, width int) string {
 	return component.Card(t, "top sessions today (by cost)", b.String(), width)
 }
 
-// ── recent sessions ────────────────────────────────────────────────────────────
-
 func (m *Model) renderRecentSessions(t *theme.Theme, width int) string {
 	inner := width - 6 // border + padding
 	if inner < 8 {
@@ -229,8 +210,6 @@ func (m *Model) renderRecentSessions(t *theme.Theme, width int) string {
 	}
 	return component.Card(t, "recent sessions", b.String(), width)
 }
-
-// ── help bar ──────────────────────────────────────────────────────────────────
 
 func (m *Model) renderHelpBar(t *theme.Theme, width int) string {
 	hints := []component.KeyHint{
