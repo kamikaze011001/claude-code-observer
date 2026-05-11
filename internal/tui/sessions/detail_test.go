@@ -384,3 +384,25 @@ func TestDetail_Tick_RunsAtTopWithOnePage(t *testing.T) {
 		t.Fatal("expected fetch cmd at top with one page loaded")
 	}
 }
+
+func TestSessionDetailView_Golden(t *testing.T) {
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	base := time.Date(2026, 5, 11, 9, 14, 0, 0, time.UTC)
+	events := []readstore.EventRow{
+		{TS: base.Add(2 * time.Second), EventName: "session_lifecycle", Summary: "started"},
+		{TS: base.Add(8 * time.Second), EventName: "user_prompt", PromptID: "p1", Summary: `"refactor receiver pipeline"`},
+		{TS: base.Add(9 * time.Second), EventName: "api_request", Summary: "opus-4-7  $0.12 · 8k/3k"},
+		{TS: base.Add(11 * time.Second), EventName: "tool_decision", Summary: "Read · approved"},
+		{TS: base.Add(11 * time.Second), EventName: "tool_result", Summary: "Read ✓ 42ms"},
+	}
+	m := &Detail{theme: &th, sessionID: "a3f9c1b1-0000-0000-0000-000000000000", events: events}
+	got := m.View(90, 32)
+	goldenDetail(t, "detail_populated", got)
+}
+
+func TestSessionDetailView_Golden_Empty(t *testing.T) {
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	m := &Detail{theme: &th, sessionID: "a3f9c1b1-0000-0000-0000-000000000000"}
+	got := m.View(90, 32)
+	goldenDetail(t, "detail_golden_empty", got)
+}

@@ -1,9 +1,13 @@
- SESSION abcdef12… 
+✦ cco · session abcdef12…                                                                    ● LIVE 
 
-TIME                EVENT                      SUMMARY
-▶ 2026-05-10 12:43:01 user_prompt                prompt: 142ch /commit
-  2026-05-10 12:43:02 tool_result                Read 12ms
-  2026-05-10 12:43:03 api_request                claude-opus-4-7 $0.0021
-  2026-05-10 12:43:05 user_prompt                prompt: 88ch
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│  time     event                  summary                                                         │
+│  12:43:01 user_prompt            prompt: 142ch /commit                                           │
+│                                                                                                  │
+│  12:43:02 tool_result            Read 12ms                                                       │
+│  12:43:03 api_request            claude-opus-4-7 $0.0021                                         │
+│  12:43:05 user_prompt            prompt: 88ch                                                    │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 
-enter on a bold prompt row opens prompt detail
+↑↓ nav  ⏎ open prompt  pgup/pgdn scroll  b back  ? help  q quit                                     

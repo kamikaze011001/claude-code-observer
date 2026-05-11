@@ -1,11 +1,14 @@
- SESSION abcdef12… 
+✦ cco · session abcdef12…                                                                    ● LIVE 
 
-TIME                EVENT                      SUMMARY
-  2026-05-10 12:00:16 tool_result                Read 1ms
-  2026-05-10 12:00:17 tool_result                Read 1ms
-  2026-05-10 12:00:18 tool_result                Read 1ms
-  2026-05-10 12:00:19 tool_result                Read 1ms
-▶ 2026-05-10 12:00:20 tool_result                Read 1ms
-
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│  time     event                  summary                                                         │
+│  12:00:16 tool_result            Read 1ms                                                        │
+│  12:00:17 tool_result            Read 1ms                                                        │
+│  12:00:18 tool_result            Read 1ms                                                        │
+│  12:00:19 tool_result            Read 1ms                                                        │
+│  12:00:20 tool_result            Read 1ms                                                        │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 press pgdn for older events
-enter on a bold prompt row opens prompt detail
+
+↑↓ nav  ⏎ open prompt  pgup/pgdn scroll  b back  ? help  q quit                                     

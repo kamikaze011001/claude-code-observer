@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/domain"
@@ -15,6 +16,7 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/prompt"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
 
 const (
@@ -190,8 +192,9 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 			}
 			pool := m.pool
 			pid := row.PromptID
+			th := m.theme
 			return m, func() tea.Msg {
-				return app.PushViewMsg{V: newPromptDetail(pool, pid)}
+				return app.PushViewMsg{V: newPromptDetail(pool, pid, th)}
 			}
 		}
 	}
@@ -206,59 +209,86 @@ func (m *Detail) View(width, height int) string {
 		d := theme.Default()
 		th = &d
 	}
+	if width <= 0 {
+		width = 90
+	}
 
-	var b strings.Builder
-	b.WriteString(th.Heading.Render(m.Title()))
-	b.WriteString("\n\n")
+	// Header
+	brand := th.Title.Render(th.Glyphs.Brand + " cco")
+	bread := th.Muted2.Render(" · session " + shortID(m.sessionID))
+	pill := component.StatusPill(th, m.statusFor())
+	headerRight := lipgloss.NewStyle().Width(width - lipgloss.Width(brand) - lipgloss.Width(bread)).Align(lipgloss.Right).Render(pill)
+	header := lipgloss.JoinHorizontal(lipgloss.Top, brand, bread, headerRight)
 
 	if len(m.events) == 0 {
-		b.WriteString(th.MutedText.Render("no events for this session"))
-		return b.String()
+		body := th.Muted2.Render("no events for this session")
+		card := component.Card(th, "", body, width)
+		help := component.HelpBar(th, m.helpHints(), width)
+		return strings.Join([]string{header, "", card, "", help}, "\n")
 	}
 
 	m.viewport = visibleRows(height)
 	clampOffset(m)
 
-	header := fmt.Sprintf("%-19s %-26s %s", "TIME", "EVENT", "SUMMARY")
-	b.WriteString(th.MutedText.Render(header))
-	b.WriteString("\n")
-
+	rows := []string{th.Muted2.Render(fmt.Sprintf("%-8s %-22s %s", "time", "event", "summary"))}
 	end := m.offset + m.viewport
 	if end > len(m.events) {
 		end = len(m.events)
 	}
 	for i := m.offset; i < end; i++ {
 		e := m.events[i]
-		line := fmt.Sprintf("%-19s %-26s %s",
-			e.TS.Format("2006-01-02 15:04:05"),
-			e.EventName,
-			e.Summary,
-		)
-		isPrompt := e.EventName == domain.EventUserPrompt && e.PromptID != ""
-		switch {
-		case i == m.cursor && isPrompt:
-			line = th.AccentText.Render("▶ " + line)
-		case i == m.cursor:
-			line = th.AccentText.Render("▶ " + line)
-		case isPrompt:
-			line = "  " + th.AccentText.Render(line)
-		default:
-			line = "  " + th.MutedText.Render(line)
+		rd := component.EventRowData{
+			Time: e.TS, EventName: e.EventName, Summary: e.Summary,
+			IsPrompt: e.EventName == domain.EventUserPrompt && e.PromptID != "",
 		}
-		b.WriteString(line)
-		b.WriteString("\n")
+		rows = append(rows, component.EventRow(th, rd, i == m.cursor, width-4))
 	}
+	card := component.Card(th, "", strings.Join(rows, "\n"), width)
+
+	var hint string
 	switch {
 	case m.loadingOlder:
-		b.WriteString("\n")
-		b.WriteString(th.MutedText.Render("loading older events…"))
+		hint = th.Muted2.Render("loading older events…")
 	case m.hasMore:
-		b.WriteString("\n")
-		b.WriteString(th.MutedText.Render("press pgdn for older events"))
+		hint = th.Muted2.Render("press pgdn for older events")
 	}
-	b.WriteString("\n")
-	b.WriteString(th.MutedText.Render("enter on a bold prompt row opens prompt detail"))
-	return b.String()
+
+	help := component.HelpBar(th, m.helpHints(), width)
+	parts := []string{header, "", card}
+	if hint != "" {
+		parts = append(parts, hint)
+	}
+	parts = append(parts, "", help)
+	return strings.Join(parts, "\n")
+}
+
+func (m *Detail) helpHints() []component.KeyHint {
+	return []component.KeyHint{
+		{Key: "↑↓", Desc: "nav"},
+		{Key: "⏎", Desc: "open prompt"},
+		{Key: "pgup/pgdn", Desc: "scroll"},
+		{Key: "b", Desc: "back"},
+		{Key: "?", Desc: "help"},
+		{Key: "q", Desc: "quit"},
+	}
+}
+
+func (m *Detail) statusFor() component.Status {
+	switch m.Status() {
+	case theme.PillLive:
+		return component.StatusLive
+	case theme.PillStale:
+		return component.StatusStale
+	default:
+		return component.StatusNoDaemon
+	}
+}
+
+func shortID(s string) string {
+	if len(s) > 8 {
+		return s[:8] + "…"
+	}
+	return s
 }
 
 // fetchOlderCmd issues a keyset-paginated fetch for events strictly older
