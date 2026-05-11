@@ -126,8 +126,16 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 		}
 		return m, nil
 
+	case detailOlderMsg:
+		m.events = append(m.events, v.events...)
+		m.hasMore = v.hasMore
+		m.lastOK = v.at
+		m.loadingOlder = false
+		return m, nil
+
 	case app.ErrMsg:
 		m.inFlight = false
+		m.loadingOlder = false
 		m.stale = true
 		return m, nil
 
@@ -153,6 +161,10 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 			m.cursor += step
 			if m.cursor > len(m.events)-1 {
 				m.cursor = max0(len(m.events) - 1)
+			}
+			if m.cursor == len(m.events)-1 && m.hasMore && !m.loadingOlder {
+				m.loadingOlder = true
+				return m, m.fetchOlderCmd()
 			}
 		case key.Matches(v, m.keys.PgUp):
 			step := m.viewport
@@ -236,6 +248,30 @@ func (m *Detail) View(width, height int) string {
 	b.WriteString("\n")
 	b.WriteString(defaultTheme.MutedText.Render("enter on a bold prompt row opens prompt detail"))
 	return b.String()
+}
+
+// fetchOlderCmd issues a keyset-paginated fetch for events strictly older
+// than the current tail (events[len-1].TS). Result is delivered as
+// detailOlderMsg and appended to m.events.
+func (m *Detail) fetchOlderCmd() tea.Cmd {
+	pool := m.pool
+	sid := m.sessionID
+	if len(m.events) == 0 {
+		return nil
+	}
+	before := m.events[len(m.events)-1].TS.UnixNano()
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), detailFetchTimeout)
+		defer cancel()
+		if pool == nil {
+			return app.ErrMsg{Err: errNoPool}
+		}
+		rows, hasMore, err := readstore.SessionEvents(ctx, pool, sid, &before, detailPageSize)
+		if err != nil {
+			return app.ErrMsg{Err: err}
+		}
+		return detailOlderMsg{events: rows, hasMore: hasMore, at: time.Now()}
+	}
 }
 
 func (m *Detail) fetchCmd() tea.Cmd {

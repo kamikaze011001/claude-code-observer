@@ -252,3 +252,91 @@ func TestDetail_PgDn_ClampsAtLastEventWhenNoMore(t *testing.T) {
 		t.Fatalf("expected nil cmd when hasMore=false; got one")
 	}
 }
+
+func TestDetail_PgDn_AtBottomTriggersFetchOlder(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{
+		{TS: mustTime("2026-05-10T12:00:01Z"), EventName: "tool_result"},
+		{TS: mustTime("2026-05-10T12:00:00Z"), EventName: "tool_result"},
+	}
+	m.viewport = 10
+	m.cursor = 1 // last loaded row
+	m.hasMore = true
+	upd, cmd := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if !upd.(*Detail).loadingOlder {
+		t.Fatal("expected loadingOlder=true after pgdn at bottom with hasMore")
+	}
+	if cmd == nil {
+		t.Fatal("expected fetch cmd")
+	}
+}
+
+func TestDetail_PgDn_DoesNotDoubleFetchWhileLoading(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{
+		{TS: mustTime("2026-05-10T12:00:00Z"), EventName: "tool_result"},
+	}
+	m.viewport = 10
+	m.cursor = 0
+	m.hasMore = true
+	m.loadingOlder = true
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if cmd != nil {
+		t.Fatal("expected nil cmd while loadingOlder=true")
+	}
+}
+
+func TestDetail_DetailOlderMsg_AppendsAndClearsLoading(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{
+		{TS: mustTime("2026-05-10T12:00:01Z"), EventName: "a"},
+		{TS: mustTime("2026-05-10T12:00:00Z"), EventName: "b"},
+	}
+	m.cursor = 1
+	m.offset = 0
+	m.loadingOlder = true
+	m.hasMore = true
+	msg := detailOlderMsg{
+		events: []readstore.EventRow{
+			{TS: mustTime("2026-05-10T11:59:59Z"), EventName: "c"},
+			{TS: mustTime("2026-05-10T11:59:58Z"), EventName: "d"},
+		},
+		hasMore: false,
+		at:      mustTime("2026-05-10T12:00:02Z"),
+	}
+	upd, _ := m.Update(msg)
+	d := upd.(*Detail)
+	if len(d.events) != 4 {
+		t.Fatalf("events len=%d want 4", len(d.events))
+	}
+	if d.events[3].EventName != "d" {
+		t.Fatalf("tail event = %q want d", d.events[3].EventName)
+	}
+	if d.loadingOlder {
+		t.Fatal("loadingOlder should be cleared")
+	}
+	if d.hasMore {
+		t.Fatal("hasMore should reflect msg")
+	}
+	if d.cursor != 1 || d.offset != 0 {
+		t.Fatalf("cursor/offset moved unexpectedly: cursor=%d offset=%d", d.cursor, d.offset)
+	}
+}
+
+func TestDetail_FetchOlderCmd_NilPoolReturnsErrMsg(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1").(*Detail)
+	m.events = []readstore.EventRow{
+		{TS: mustTime("2026-05-10T12:00:00Z"), EventName: "tool_result"},
+	}
+	cmd := m.fetchOlderCmd()
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	if _, ok := cmd().(app.ErrMsg); !ok {
+		t.Fatal("expected app.ErrMsg from nil-pool path")
+	}
+}
