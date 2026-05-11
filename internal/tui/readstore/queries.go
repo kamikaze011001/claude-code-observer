@@ -21,6 +21,7 @@ type SessionRow struct {
 	DurationSec int64
 	CostUSD     float64
 	Prompts     int64
+	Tokens      int64
 	Live        bool
 }
 
@@ -38,7 +39,8 @@ SELECT session_id,
        last_seen_at,
        ended_at,
        cost_usd,
-       prompts
+       prompts,
+       input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens AS tokens
 FROM sessions
 WHERE (? IS NULL OR started_at < ?)
 ORDER BY started_at DESC
@@ -61,7 +63,7 @@ LIMIT ?`
 			lastSeen int64
 			ended    sql.NullInt64
 		)
-		if err := rows.Scan(&r.SessionID, &r.ProjectName, &started, &lastSeen, &ended, &r.CostUSD, &r.Prompts); err != nil {
+		if err := rows.Scan(&r.SessionID, &r.ProjectName, &started, &lastSeen, &ended, &r.CostUSD, &r.Prompts, &r.Tokens); err != nil {
 			return nil, nil, fmt.Errorf("sessions page scan: %w", err)
 		}
 		r.StartedAt = time.Unix(0, started).UTC()
@@ -88,15 +90,18 @@ LIMIT ?`
 
 // WindowStats is the rollup over a single time window.
 type WindowStats struct {
-	CostUSD float64
-	Prompts int64
-	Tools   int64
-	Errors  int64
+	Sessions int64
+	CostUSD  float64
+	Prompts  int64
+	Tokens   int64
+	Tools    int64
+	Errors   int64
 }
 
 // Snapshot is the dashboard's three-window rollup.
 type Snapshot struct {
 	Today         WindowStats
+	Yesterday     WindowStats
 	D7            WindowStats
 	D30           WindowStats
 	LatestEventTS int64
@@ -122,34 +127,63 @@ func DashboardSnapshot(ctx context.Context, db *sql.DB, now time.Time) (Snapshot
 
 	const q = `
 SELECT
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd     END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts      END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls   END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors   END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd     END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts      END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls   END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors   END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd     END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts      END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls   END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors   END), 0)
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN 1                                                                                    END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd                                                                             END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts                                                                              END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens             END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN 1                                                                                    END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd                                                                             END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts                                                                              END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens             END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN 1                                                                                    END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd                                                                             END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts                                                                              END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens             END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors                                                                           END), 0)
 FROM sessions
 WHERE started_at >= ?`
 
 	var s Snapshot
 	err := db.QueryRowContext(ctx, q,
-		today, today, today, today,
-		d7, d7, d7, d7,
-		d30, d30, d30, d30,
+		today, today, today, today, today, today,
+		d7, d7, d7, d7, d7, d7,
+		d30, d30, d30, d30, d30, d30,
 		d30,
 	).Scan(
-		&s.Today.CostUSD, &s.Today.Prompts, &s.Today.Tools, &s.Today.Errors,
-		&s.D7.CostUSD, &s.D7.Prompts, &s.D7.Tools, &s.D7.Errors,
-		&s.D30.CostUSD, &s.D30.Prompts, &s.D30.Tools, &s.D30.Errors,
+		&s.Today.Sessions, &s.Today.CostUSD, &s.Today.Prompts, &s.Today.Tokens, &s.Today.Tools, &s.Today.Errors,
+		&s.D7.Sessions, &s.D7.CostUSD, &s.D7.Prompts, &s.D7.Tokens, &s.D7.Tools, &s.D7.Errors,
+		&s.D30.Sessions, &s.D30.CostUSD, &s.D30.Prompts, &s.D30.Tokens, &s.D30.Tools, &s.D30.Errors,
 	)
 	if err != nil {
 		return Snapshot{}, nil, fmt.Errorf("snapshot query: %w", err)
+	}
+
+	yStart := startOfDay.Add(-24 * time.Hour).UnixNano()
+	yEnd := today
+	const yQ = `
+SELECT
+  COALESCE(SUM(CASE WHEN started_at >= ? AND started_at < ? THEN 1                                                                                END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? AND started_at < ? THEN cost_usd                                                                         END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? AND started_at < ? THEN prompts                                                                          END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? AND started_at < ? THEN input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens         END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? AND started_at < ? THEN tool_calls                                                                       END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? AND started_at < ? THEN api_errors                                                                       END), 0)
+FROM sessions
+WHERE started_at >= ? AND started_at < ?`
+	if err := db.QueryRowContext(ctx, yQ,
+		yStart, yEnd, yStart, yEnd, yStart, yEnd,
+		yStart, yEnd, yStart, yEnd, yStart, yEnd,
+		yStart, yEnd,
+	).Scan(
+		&s.Yesterday.Sessions, &s.Yesterday.CostUSD, &s.Yesterday.Prompts,
+		&s.Yesterday.Tokens, &s.Yesterday.Tools, &s.Yesterday.Errors,
+	); err != nil {
+		return Snapshot{}, nil, fmt.Errorf("yesterday snapshot: %w", err)
 	}
 
 	var ts sql.NullInt64
@@ -186,6 +220,41 @@ LIMIT 3`
 		return Snapshot{}, nil, fmt.Errorf("top sessions iter: %w", err)
 	}
 	return s, top, nil
+}
+
+// RecentSessionsToday returns up to limit sessions started since the start of
+// the UTC day containing now, newest-first. The shape is the same as
+// TopSession so the dashboard can reuse the same row renderer.
+func RecentSessionsToday(ctx context.Context, db *sql.DB, now time.Time, limit int) ([]TopSession, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).UnixNano()
+	const q = `
+SELECT session_id, COALESCE(project_name, ''), started_at, cost_usd, prompts, ended_at IS NULL
+FROM sessions
+WHERE started_at >= ?
+ORDER BY started_at DESC
+LIMIT ?`
+	rows, err := db.QueryContext(ctx, q, startOfDay, limit)
+	if err != nil {
+		return nil, fmt.Errorf("recent sessions query: %w", err)
+	}
+	defer rows.Close()
+	var out []TopSession
+	for rows.Next() {
+		var r TopSession
+		var live int
+		if err := rows.Scan(&r.SessionID, &r.ProjectName, &r.StartedAt, &r.CostUSD, &r.Prompts, &live); err != nil {
+			return nil, fmt.Errorf("recent session scan: %w", err)
+		}
+		r.Live = live == 1
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("recent sessions iter: %w", err)
+	}
+	return out, nil
 }
 
 // EventRow is a row in the Session Detail timeline. Summary is derived from
