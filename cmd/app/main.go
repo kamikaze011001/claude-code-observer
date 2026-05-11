@@ -22,6 +22,12 @@ var (
 	logger   *slog.Logger
 )
 
+// Theme and icon set are resolved in tui.go before opening the TUI.
+var (
+	themeName string
+	iconsName string
+)
+
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "claude-code-observer",
@@ -39,6 +45,8 @@ func newRootCmd() *cobra.Command {
 	}
 	cmd.PersistentFlags().StringVar(&homeDir, "home", "", "Data directory (default: $CCO_HOME or ~/.claude-code-observer)")
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level: debug|info|warn|error")
+	cmd.PersistentFlags().StringVar(&themeName, "theme", "", "Color theme: mocha|macchiato|frappe|latte|auto (default: $CCO_THEME or auto)")
+	cmd.PersistentFlags().StringVar(&iconsName, "icons", "", "Icon set: unicode|nerd (default: $CCO_ICONS or unicode)")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return newTUICmd().RunE(cmd, args)
 	}

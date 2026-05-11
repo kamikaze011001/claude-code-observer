@@ -73,3 +73,31 @@ func TestRoot_HomeFromEnv(t *testing.T) {
 		t.Errorf("homeDir = %q, want /tmp/from-env", homeDir)
 	}
 }
+
+func TestRoot_ThemeFlag(t *testing.T) {
+	themeName = ""
+	t.Setenv("CCO_THEME", "")
+	root := newRootCmd()
+	registerSubcommands(root)
+	root.SetArgs([]string{"--theme", "latte", "version"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if themeName != "latte" {
+		t.Errorf("themeName = %q, want latte", themeName)
+	}
+}
+
+func TestRoot_IconsFlag(t *testing.T) {
+	iconsName = ""
+	t.Setenv("CCO_ICONS", "")
+	root := newRootCmd()
+	registerSubcommands(root)
+	root.SetArgs([]string{"--icons", "nerd", "version"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if iconsName != "nerd" {
+		t.Errorf("iconsName = %q, want nerd", iconsName)
+	}
+}

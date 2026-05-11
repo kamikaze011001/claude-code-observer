@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,7 +27,11 @@ func newTUICmd() *cobra.Command {
 			}
 			defer func() { _ = pool.Close() }()
 
-			shell := app.New(theme.Default())
+			envTheme := os.Getenv("CCO_THEME")
+			envIcons := os.Getenv("CCO_ICONS")
+			colorFGBG := os.Getenv("COLORFGBG")
+			th, _, _ := theme.Resolve(themeName, iconsName, envTheme, envIcons, colorFGBG)
+			shell := app.New(th)
 			shell.Push(dashboard.New(pool))
 
 			prog := tea.NewProgram(shell, tea.WithAltScreen(), tea.WithContext(cmd.Context()))
