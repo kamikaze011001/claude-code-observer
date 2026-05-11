@@ -40,6 +40,7 @@ SELECT session_id,
        ended_at,
        cost_usd,
        prompts,
+       -- total_tokens = input + output + cache_read + cache_creation (all four columns summed)
        input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens AS tokens
 FROM sessions
 WHERE (? IS NULL OR started_at < ?)
@@ -163,21 +164,28 @@ WHERE started_at >= ?`
 		return Snapshot{}, nil, fmt.Errorf("snapshot query: %w", err)
 	}
 
+	// The yesterday window is queried separately because it has a different
+	// lower AND upper bound (the main query's three windows share `WHERE started_at >= d30`).
+	// Merging would require a UNION ALL or a CASE chain across mismatched ranges and
+	// hurt readability more than it would save round-trips.
 	yStart := startOfDay.Add(-24 * time.Hour).UnixNano()
 	yEnd := today
 	const yQ = `
+WITH y AS (
+  SELECT cost_usd, prompts, tool_calls, api_errors,
+         input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens
+  FROM sessions
+  WHERE started_at >= ? AND started_at < ?
+)
 SELECT
-  COALESCE(SUM(CASE WHEN started_at >= ? AND started_at < ? THEN 1                                                                                END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? AND started_at < ? THEN cost_usd                                                                         END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? AND started_at < ? THEN prompts                                                                          END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? AND started_at < ? THEN input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens         END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? AND started_at < ? THEN tool_calls                                                                       END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? AND started_at < ? THEN api_errors                                                                       END), 0)
-FROM sessions
-WHERE started_at >= ? AND started_at < ?`
+  COALESCE(COUNT(*), 0),
+  COALESCE(SUM(cost_usd), 0),
+  COALESCE(SUM(prompts), 0),
+  COALESCE(SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens), 0),
+  COALESCE(SUM(tool_calls), 0),
+  COALESCE(SUM(api_errors), 0)
+FROM y`
 	if err := db.QueryRowContext(ctx, yQ,
-		yStart, yEnd, yStart, yEnd, yStart, yEnd,
-		yStart, yEnd, yStart, yEnd, yStart, yEnd,
 		yStart, yEnd,
 	).Scan(
 		&s.Yesterday.Sessions, &s.Yesterday.CostUSD, &s.Yesterday.Prompts,
