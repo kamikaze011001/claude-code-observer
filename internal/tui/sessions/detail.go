@@ -19,7 +19,7 @@ import (
 
 const (
 	detailFetchTimeout = 500 * time.Millisecond
-	detailPageSize     = 200
+	detailPageSize     = 50
 )
 
 type detailDataMsg struct {
@@ -28,16 +28,28 @@ type detailDataMsg struct {
 	at      time.Time
 }
 
+// detailOlderMsg carries events older than the current tail. Unlike
+// detailDataMsg it is appended to m.events, never replaces — preserves the
+// user's cursor and scroll position while the list grows below them.
+type detailOlderMsg struct {
+	events  []readstore.EventRow
+	hasMore bool
+	at      time.Time
+}
+
 // Detail is the session event timeline view model.
 type Detail struct {
-	pool      *sql.DB
-	sessionID string
-	events    []readstore.EventRow
-	cursor    int
-	hasMore   bool
-	inFlight  bool
-	stale     bool
-	lastOK    time.Time
+	pool         *sql.DB
+	sessionID    string
+	events       []readstore.EventRow
+	cursor       int
+	offset       int  // index of first event rendered in the visible window
+	viewport     int  // visible row count, written by View, read by Update for page-step sizing
+	hasMore      bool
+	loadingOlder bool // guards against double-fetch when pgdn is mashed at bottom
+	inFlight     bool
+	stale        bool
+	lastOK       time.Time
 
 	keys listKeys
 }
