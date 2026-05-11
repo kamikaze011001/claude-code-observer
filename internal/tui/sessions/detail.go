@@ -40,6 +40,7 @@ type detailOlderMsg struct {
 // Detail is the session event timeline view model.
 type Detail struct {
 	pool         *sql.DB
+	theme        *theme.Theme
 	sessionID    string
 	events       []readstore.EventRow
 	cursor       int
@@ -55,8 +56,8 @@ type Detail struct {
 }
 
 // NewDetail constructs a Detail view for the given sessionID.
-func NewDetail(pool *sql.DB, sessionID string) app.View {
-	return &Detail{pool: pool, sessionID: sessionID, keys: defaultListKeys()}
+func NewDetail(pool *sql.DB, sessionID string, th *theme.Theme) app.View {
+	return &Detail{pool: pool, theme: th, sessionID: sessionID, keys: defaultListKeys()}
 }
 
 // Init runs once when the view is pushed; starts the first fetch.
@@ -200,12 +201,18 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 // View renders the session event timeline. Renders only the visible window
 // (events[offset:offset+viewport]) and slides offset to follow the cursor.
 func (m *Detail) View(width, height int) string {
+	th := m.theme
+	if th == nil {
+		d := theme.Default()
+		th = &d
+	}
+
 	var b strings.Builder
-	b.WriteString(defaultTheme.Heading.Render(m.Title()))
+	b.WriteString(th.Heading.Render(m.Title()))
 	b.WriteString("\n\n")
 
 	if len(m.events) == 0 {
-		b.WriteString(defaultTheme.MutedText.Render("no events for this session"))
+		b.WriteString(th.MutedText.Render("no events for this session"))
 		return b.String()
 	}
 
@@ -213,7 +220,7 @@ func (m *Detail) View(width, height int) string {
 	clampOffset(m)
 
 	header := fmt.Sprintf("%-19s %-26s %s", "TIME", "EVENT", "SUMMARY")
-	b.WriteString(defaultTheme.MutedText.Render(header))
+	b.WriteString(th.MutedText.Render(header))
 	b.WriteString("\n")
 
 	end := m.offset + m.viewport
@@ -230,13 +237,13 @@ func (m *Detail) View(width, height int) string {
 		isPrompt := e.EventName == domain.EventUserPrompt && e.PromptID != ""
 		switch {
 		case i == m.cursor && isPrompt:
-			line = defaultTheme.AccentText.Render("▶ " + line)
+			line = th.AccentText.Render("▶ " + line)
 		case i == m.cursor:
-			line = defaultTheme.AccentText.Render("▶ " + line)
+			line = th.AccentText.Render("▶ " + line)
 		case isPrompt:
-			line = "  " + defaultTheme.AccentText.Render(line)
+			line = "  " + th.AccentText.Render(line)
 		default:
-			line = "  " + defaultTheme.MutedText.Render(line)
+			line = "  " + th.MutedText.Render(line)
 		}
 		b.WriteString(line)
 		b.WriteString("\n")
@@ -244,13 +251,13 @@ func (m *Detail) View(width, height int) string {
 	switch {
 	case m.loadingOlder:
 		b.WriteString("\n")
-		b.WriteString(defaultTheme.MutedText.Render("loading older events…"))
+		b.WriteString(th.MutedText.Render("loading older events…"))
 	case m.hasMore:
 		b.WriteString("\n")
-		b.WriteString(defaultTheme.MutedText.Render("press pgdn for older events"))
+		b.WriteString(th.MutedText.Render("press pgdn for older events"))
 	}
 	b.WriteString("\n")
-	b.WriteString(defaultTheme.MutedText.Render("enter on a bold prompt row opens prompt detail"))
+	b.WriteString(th.MutedText.Render("enter on a bold prompt row opens prompt detail"))
 	return b.String()
 }
 

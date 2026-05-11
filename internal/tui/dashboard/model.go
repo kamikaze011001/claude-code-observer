@@ -92,14 +92,16 @@ func (m *Model) Update(msg tea.Msg) (app.View, tea.Cmd) {
 			if len(m.recent) > 0 {
 				sid := m.recent[m.recentCursor].SessionID
 				pool := m.pool
+				th := m.theme
 				return m, func() tea.Msg {
-					return app.PushViewMsg{V: sessions.NewDetail(pool, sid)}
+					return app.PushViewMsg{V: sessions.NewDetail(pool, sid, th)}
 				}
 			}
 		case v.Type == tea.KeyRunes && len(v.Runes) == 1 && v.Runes[0] == 's':
 			pool := m.pool
+			th := m.theme
 			return m, func() tea.Msg {
-				return app.PushViewMsg{V: sessions.NewList(pool)}
+				return app.PushViewMsg{V: sessions.NewList(pool, th)}
 			}
 		}
 	}

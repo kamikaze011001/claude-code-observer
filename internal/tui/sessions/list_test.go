@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
@@ -15,7 +17,13 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 )
 
-var updateList = flag.Bool("update-list", false, "update list goldens")
+func TestMain(m *testing.M) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	os.Exit(m.Run())
+}
+
+// update controls both the legacy -update-list goldens and the new golden test.
+var updateList = flag.Bool("update", false, "update golden files")
 
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
 
@@ -36,23 +44,93 @@ func goldenList(t *testing.T, name, got string) {
 	}
 	want, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read golden: %v", err)
+		t.Fatalf("read golden %s: %v (run with -update to create)", path, err)
 	}
 	if got != string(want) {
 		t.Fatalf("golden mismatch %s\n--- got ---\n%s\n--- want ---\n%s", name, got, want)
 	}
 }
 
+// TestSessionsListView_Golden covers the new component-based View.
+func TestSessionsListView_Golden(t *testing.T) {
+	type testCase struct {
+		name    string
+		rows    []readstore.SessionRow
+		cursor  int
+		nextCur *int64
+	}
+	cases := []testCase{
+		{
+			name: "populated",
+			rows: []readstore.SessionRow{
+				{
+					SessionID:   "s1",
+					ProjectName: "claude-code-observer",
+					StartedAt:   time.Date(2026, 5, 11, 9, 14, 0, 0, time.UTC),
+					DurationSec: 4320,
+					CostUSD:     1.12,
+					Prompts:     12,
+					Tokens:      38000,
+					Live:        true,
+				},
+				{
+					SessionID:   "s2",
+					ProjectName: "cco-frontend",
+					StartedAt:   time.Date(2026, 5, 11, 8, 2, 0, 0, time.UTC),
+					DurationSec: 2732,
+					CostUSD:     0.81,
+					Prompts:     7,
+					Tokens:      24000,
+				},
+				{
+					SessionID:   "s3",
+					ProjectName: "日本語プロジェクト",
+					StartedAt:   time.Date(2026, 5, 11, 7, 30, 0, 0, time.UTC),
+					DurationSec: 1338,
+					CostUSD:     0.42,
+					Prompts:     5,
+					Tokens:      15000,
+				},
+			},
+			cursor: 1,
+		},
+		{name: "empty"},
+	}
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			var lastOK time.Time
+			if len(c.rows) > 0 {
+				// Populated case: daemon was seen recently.
+				lastOK = time.Date(2026, 5, 11, 9, 14, 0, 0, time.UTC)
+			}
+			m := &List{
+				theme:   &th,
+				rows:    c.rows,
+				cursor:  c.cursor,
+				nextCur: c.nextCur,
+				lastOK:  lastOK,
+				keys:    defaultListKeys(),
+			}
+			got := m.View(90, 32)
+			goldenList(t, "list_"+c.name, got)
+		})
+	}
+}
+
+// Legacy view golden tests — kept to catch regressions; goldens are regenerated
+// with -update after the View rewrite.
 func TestList_View_Empty(t *testing.T) {
 	t.Parallel()
-	m := NewList(nil)
+	m := NewList(nil, nil)
 	out := m.View(80, 20)
-	goldenList(t, "list_empty", out)
+	goldenList(t, "list_empty_legacy", out)
 }
 
 func TestList_View_OnePage(t *testing.T) {
 	t.Parallel()
-	m := NewList(nil)
+	m := NewList(nil, nil)
 	m.rows = []readstore.SessionRow{
 		{SessionID: "abc123def", ProjectName: "claude-code-observer", StartedAt: mustTime("2026-05-10T12:43:01Z"), DurationSec: 842, CostUSD: 0.42, Prompts: 7, Live: true},
 		{SessionID: "def456abc", ProjectName: "my-other-project", StartedAt: mustTime("2026-05-10T12:18:55Z"), DurationSec: 4920, CostUSD: 1.84, Prompts: 23, Live: false},
@@ -61,7 +139,7 @@ func TestList_View_OnePage(t *testing.T) {
 	m.cursor = 1
 	m.lastOK = mustTime("2026-05-10T12:43:02Z")
 	out := m.View(100, 20)
-	goldenList(t, "list_one_page", out)
+	goldenList(t, "list_one_page_legacy", out)
 }
 
 func mustTime(s string) time.Time {
@@ -74,7 +152,7 @@ func mustTime(s string) time.Time {
 
 func TestList_KeyJDownKKDown(t *testing.T) {
 	t.Parallel()
-	m := NewList(nil)
+	m := NewList(nil, nil)
 	m.rows = []readstore.SessionRow{
 		{SessionID: "a"}, {SessionID: "b"}, {SessionID: "c"},
 	}
@@ -90,7 +168,7 @@ func TestList_KeyJDownKKDown(t *testing.T) {
 
 func TestList_KeyGTopAndShiftGBottom(t *testing.T) {
 	t.Parallel()
-	m := NewList(nil)
+	m := NewList(nil, nil)
 	m.rows = []readstore.SessionRow{{SessionID: "a"}, {SessionID: "b"}, {SessionID: "c"}}
 	m.cursor = 1
 	upd, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
@@ -105,7 +183,7 @@ func TestList_KeyGTopAndShiftGBottom(t *testing.T) {
 
 func TestList_StatusPill(t *testing.T) {
 	t.Parallel()
-	m := NewList(nil)
+	m := NewList(nil, nil)
 	if m.Status() != theme.PillNoDaemon {
 		t.Fatalf("empty model status=%v want PillNoDaemon", m.Status())
 	}
@@ -121,14 +199,14 @@ func TestList_StatusPill(t *testing.T) {
 
 func TestList_Title(t *testing.T) {
 	t.Parallel()
-	if NewList(nil).Title() != "SESSIONS" {
+	if NewList(nil, nil).Title() != "SESSIONS" {
 		t.Fatal("title")
 	}
 }
 
 func TestList_TickFetchesAndUpdatesRows(t *testing.T) {
 	t.Parallel()
-	m := NewList(nil)
+	m := NewList(nil, nil)
 	if cmd := m.Init(); cmd == nil {
 		t.Fatal("Init returned nil cmd")
 	}
@@ -136,7 +214,7 @@ func TestList_TickFetchesAndUpdatesRows(t *testing.T) {
 
 func TestList_EnterPushesDetail(t *testing.T) {
 	t.Parallel()
-	m := NewList(nil)
+	m := NewList(nil, nil)
 	m.rows = []readstore.SessionRow{{SessionID: "abc"}}
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
@@ -161,7 +239,7 @@ var _ app.View = (*List)(nil)
 
 func TestList_ShortHelpAndInit(t *testing.T) {
 	t.Parallel()
-	m := NewList(nil)
+	m := NewList(nil, nil)
 	if len(m.ShortHelp()) == 0 {
 		t.Fatal("ShortHelp empty")
 	}
@@ -172,7 +250,7 @@ func TestList_ShortHelpAndInit(t *testing.T) {
 
 func TestList_FetchCmdNilPoolReturnsErr(t *testing.T) {
 	t.Parallel()
-	m := NewList(nil)
+	m := NewList(nil, nil)
 	cmd := m.fetchCmd(nil)
 	if cmd == nil {
 		t.Fatal("nil cmd")
@@ -185,7 +263,7 @@ func TestList_FetchCmdNilPoolReturnsErr(t *testing.T) {
 
 func TestList_TickIgnoredWhenInFlight(t *testing.T) {
 	t.Parallel()
-	m := NewList(nil)
+	m := NewList(nil, nil)
 	m.inFlight = true
 	_, cmd := m.Update(app.TickMsg(time.Now()))
 	if cmd != nil {
@@ -195,7 +273,7 @@ func TestList_TickIgnoredWhenInFlight(t *testing.T) {
 
 func TestList_ErrMsgSetsStale(t *testing.T) {
 	t.Parallel()
-	m := NewList(nil)
+	m := NewList(nil, nil)
 	m.Update(app.ErrMsg{Err: errBoomList})
 	if !m.stale {
 		t.Fatal("expected stale on ErrMsg")
@@ -210,7 +288,7 @@ func (e errSentinel) Error() string { return string(e) }
 
 func TestList_DataMsgUpdatesRows(t *testing.T) {
 	t.Parallel()
-	m := NewList(nil)
+	m := NewList(nil, nil)
 	rows := []readstore.SessionRow{{SessionID: "x"}}
 	m.cursor = 0
 	m.Update(listDataMsg{rows: rows, next: nil, cursor: nil, at: time.Now()})
@@ -221,7 +299,10 @@ func TestList_DataMsgUpdatesRows(t *testing.T) {
 
 func TestList_HumanDurationBranches(t *testing.T) {
 	t.Parallel()
-	cases := []struct{ secs int64; want string }{
+	cases := []struct {
+		secs int64
+		want string
+	}{
 		{30, "30s"},
 		{125, "2m05s"},
 		{3700, "1h01m"},
