@@ -118,6 +118,7 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 		m.hasMore = v.hasMore
 		m.lastOK = v.at
 		m.inFlight = false
+		m.loadingOlder = false
 		m.stale = false
 		m.cursor = 0
 		m.offset = 0
