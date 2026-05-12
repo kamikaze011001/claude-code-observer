@@ -33,7 +33,6 @@ func (m *Model) View(width, height int) string {
 
 	var sections []string
 
-	sections = append(sections, m.renderHeader(t, width))
 	sections = append(sections, m.renderWindowCards(t, width))
 
 	if delta := m.renderDeltaStrip(t, width); delta != "" {
@@ -45,21 +44,6 @@ func (m *Model) View(width, height int) string {
 	sections = append(sections, m.renderHelpBar(t, width))
 
 	return strings.Join(sections, "\n")
-}
-
-func (m *Model) renderHeader(t *theme.Theme, width int) string {
-	brand := t.Title.Render(t.Glyphs.Brand + " cco")
-	breadcrumb := t.Muted.Render(" · dashboard")
-	left := brand + breadcrumb
-
-	pill := component.StatusPill(t, m.Status())
-	pillW := lipgloss.Width(pill)
-	leftW := width - pillW
-	if leftW < 0 {
-		leftW = 0
-	}
-	leftPadded := lipgloss.NewStyle().Width(leftW).Render(left)
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftPadded, pill)
 }
 
 func (m *Model) renderWindowCards(t *theme.Theme, width int) string {
@@ -80,9 +64,17 @@ func renderWindowCard(t *theme.Theme, title string, ws readstore.WindowStats, ca
 		inner = 8
 	}
 
+	// Pad labels to a uniform width so values line up in a column across all
+	// rows within the card. "sessions" (8) is the longest of the six labels;
+	// +2 spaces of gutter = labelCol of 10.
+	const labelCol = 10
+	labelStyle := func(s string) string {
+		return t.Label.Render(lipgloss.NewStyle().Width(labelCol).Render(s))
+	}
+
 	var b strings.Builder
 	writeKV := func(label, value string) {
-		row := t.Label.Render(label) + "  " + t.Value.Render(value)
+		row := labelStyle(label) + t.Value.Render(value)
 		b.WriteString(lipgloss.NewStyle().Width(inner).Render(row))
 		b.WriteString("\n")
 	}
@@ -94,14 +86,13 @@ func renderWindowCard(t *theme.Theme, title string, ws readstore.WindowStats, ca
 	writeKV("cost", fmt.Sprintf("$%.2f", ws.CostUSD))
 
 	errVal := fmt.Sprintf("%d", ws.Errors)
-	errLabel := t.Label.Render("errors")
 	var errStyled string
 	if ws.Errors > 0 {
 		errStyled = lipgloss.NewStyle().Foreground(t.Palette.Red).Render(errVal)
 	} else {
 		errStyled = t.Value.Render(errVal)
 	}
-	row := errLabel + "  " + errStyled
+	row := labelStyle("errors") + errStyled
 	b.WriteString(lipgloss.NewStyle().Width(inner).Render(row))
 
 	return component.Card(t, title, b.String(), cardW)

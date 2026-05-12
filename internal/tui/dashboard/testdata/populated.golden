@@ -1,12 +1,11 @@
-✦ cco · dashboard                                                                   STALE 
 ╭───────────────────────────╮ ╭───────────────────────────╮ ╭───────────────────────────╮
 │  TODAY                    │ │  7 DAYS                   │ │  30 DAYS                  │
 │  sessions  3              │ │  sessions  18             │ │  sessions  71             │
-│  prompts  37              │ │  prompts  214             │ │  prompts  892             │
-│  tokens  12k              │ │  tokens  87k              │ │  tokens  340k             │
-│  tools  152               │ │  tools  1k                │ │  tools  4k                │
-│  cost  $4.21              │ │  cost  $28.40             │ │  cost  $112.05            │
-│  errors  2                │ │  errors  9                │ │  errors  41               │
+│  prompts   37             │ │  prompts   214            │ │  prompts   892            │
+│  tokens    12k            │ │  tokens    87k            │ │  tokens    340k           │
+│  tools     152            │ │  tools     1k             │ │  tools     4k             │
+│  cost      $4.21          │ │  cost      $28.40         │ │  cost      $112.05        │
+│  errors    2              │ │  errors    9              │ │  errors    41             │
 ╰───────────────────────────╯ ╰───────────────────────────╯ ╰───────────────────────────╯
 ╭────────────────────────────────────────────────────────────────────────────────────────╮
 │  today vs yesterday                                                                    │

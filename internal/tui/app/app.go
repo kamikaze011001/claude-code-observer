@@ -134,7 +134,11 @@ func (a *App) safeRender(v View) (out string) {
 }
 
 func (a *App) renderChrome(v View, body string) string {
-	title := a.theme.Title.Render("CCO  │  " + v.Title())
+	brand := a.theme.Accent.Render(a.theme.Glyphs.Brand) + " " + a.theme.Title.Render("CCO")
+	sep := a.theme.Muted.Render("  │  ")
+	crumb := a.theme.Subtitle.Render(v.Title())
+	title := brand + sep + crumb
+
 	pill := component.StatusPill(&a.theme, v.Status())
 	helps := []string{}
 	for _, k := range v.ShortHelp() {

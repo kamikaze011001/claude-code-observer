@@ -2,6 +2,8 @@ package app
 
 import (
 	"errors"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -135,3 +137,18 @@ func TestApp_HelpKeyPushesAboutView(t *testing.T) {
 		t.Fatalf("top view title = %q, want %q", got, "ABOUT")
 	}
 }
+
+func TestApp_RenderChrome_ContainsStyledWordmark(t *testing.T) {
+	a := newAppWith(&fakeView{title: "X"})
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	out := stripANSIApp(a.View())
+	for _, want := range []string{"✦", "CCO", "│", "X"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("chrome missing %q:\n%s", want, out)
+		}
+	}
+}
+
+var ansiREApp = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSIApp(s string) string { return ansiREApp.ReplaceAllString(s, "") }
