@@ -1,8 +1,11 @@
 package about
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
@@ -51,10 +54,38 @@ func (m *Model) ShortHelp() []key.Binding {
 
 func (m *Model) Status() component.Status { return component.StatusLive }
 
-// View is implemented in render.go (added in Task 4). To keep this file
-// self-contained and satisfy the app.View interface during incremental
-// development, define a minimal stub here that Task 4 replaces.
-func (m *Model) View(width, height int) string { return "" }
+// View renders the about screen. On terminals ≥ 32 cells wide it shows the
+// full block logo + metadata; narrower terminals get a compact wordmark.
+func (m *Model) View(width, height int) string {
+	if width < 32 {
+		return m.renderNarrow(width, height)
+	}
+	return m.renderWide(width, height)
+}
+
+func (m *Model) renderWide(width, height int) string {
+	logo := Render(m.theme)
+	tagline := m.theme.Subtitle.Render("claude code observer")
+	meta := m.theme.Muted.Render(
+		"v" + strings.TrimPrefix(m.version, "v") +
+			" · commit " + m.commit +
+			" · local OTLP receiver",
+	)
+	help := m.theme.Help.Render("[b] back   [q] quit")
+
+	body := strings.Join([]string{logo, "", tagline, meta, "", help}, "\n")
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, body)
+}
+
+func (m *Model) renderNarrow(width, height int) string {
+	brand := m.theme.Accent.Render(m.theme.Glyphs.Brand) + " " + m.theme.Title.Render("CCO")
+	tagline := m.theme.Subtitle.Render("claude code observer")
+	meta := m.theme.Muted.Render("v" + strings.TrimPrefix(m.version, "v"))
+	help := m.theme.Help.Render("[b] back  [q] quit")
+
+	body := strings.Join([]string{brand, tagline, meta, "", help}, "\n")
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, body)
+}
 
 // Static interface compliance check.
 var _ app.View = (*Model)(nil)
