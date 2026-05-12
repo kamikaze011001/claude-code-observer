@@ -90,15 +90,15 @@ func (m *Detail) ShortHelp() []key.Binding {
 	}
 }
 
-// Status reports the current pill state for the footer.
-func (m *Detail) Status() theme.PillState {
+// Status reports the current connection state for the footer pill.
+func (m *Detail) Status() component.Status {
 	if m.lastOK.IsZero() && len(m.events) == 0 {
-		return theme.PillNoDaemon
+		return component.StatusNoDaemon
 	}
 	if m.stale {
-		return theme.PillStale
+		return component.StatusStale
 	}
-	return theme.PillLive
+	return component.StatusLive
 }
 
 // Update consumes a tea.Msg and returns an updated copy of itself plus any
@@ -206,7 +206,7 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 func (m *Detail) View(width, height int) string {
 	th := m.theme
 	if th == nil {
-		d := theme.Default()
+		d := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
 		th = &d
 	}
 	if width <= 0 {
@@ -215,13 +215,13 @@ func (m *Detail) View(width, height int) string {
 
 	// Header
 	brand := th.Title.Render(th.Glyphs.Brand + " cco")
-	bread := th.Muted2.Render(" · session " + shortID(m.sessionID))
-	pill := component.StatusPill(th, m.statusFor())
+	bread := th.Muted.Render(" · session " + shortID(m.sessionID))
+	pill := component.StatusPill(th, m.Status())
 	headerRight := lipgloss.NewStyle().Width(width - lipgloss.Width(brand) - lipgloss.Width(bread)).Align(lipgloss.Right).Render(pill)
 	header := lipgloss.JoinHorizontal(lipgloss.Top, brand, bread, headerRight)
 
 	if len(m.events) == 0 {
-		body := th.Muted2.Render("no events for this session")
+		body := th.Muted.Render("no events for this session")
 		card := component.Card(th, "", body, width)
 		help := component.HelpBar(th, m.helpHints(), width)
 		return strings.Join([]string{header, "", card, "", help}, "\n")
@@ -230,7 +230,7 @@ func (m *Detail) View(width, height int) string {
 	m.viewport = visibleRows(height)
 	clampOffset(m)
 
-	rows := []string{th.Muted2.Render(fmt.Sprintf("%-8s %-22s %s", "time", "event", "summary"))}
+	rows := []string{th.Muted.Render(fmt.Sprintf("%-8s %-22s %s", "time", "event", "summary"))}
 	end := m.offset + m.viewport
 	if end > len(m.events) {
 		end = len(m.events)
@@ -248,9 +248,9 @@ func (m *Detail) View(width, height int) string {
 	var hint string
 	switch {
 	case m.loadingOlder:
-		hint = th.Muted2.Render("loading older events…")
+		hint = th.Muted.Render("loading older events…")
 	case m.hasMore:
-		hint = th.Muted2.Render("press pgdn for older events")
+		hint = th.Muted.Render("press pgdn for older events")
 	}
 
 	help := component.HelpBar(th, m.helpHints(), width)
@@ -273,16 +273,6 @@ func (m *Detail) helpHints() []component.KeyHint {
 	}
 }
 
-func (m *Detail) statusFor() component.Status {
-	switch m.Status() {
-	case theme.PillLive:
-		return component.StatusLive
-	case theme.PillStale:
-		return component.StatusStale
-	default:
-		return component.StatusNoDaemon
-	}
-}
 
 func shortID(s string) string {
 	if len(s) > 8 {

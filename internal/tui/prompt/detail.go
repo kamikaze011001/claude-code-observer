@@ -48,7 +48,7 @@ func (d *Detail) th() *theme.Theme {
 	if d.theme != nil {
 		return d.theme
 	}
-	t := theme.Default()
+	t := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
 	return &t
 }
 
@@ -73,25 +73,14 @@ func (d *Detail) ShortHelp() []key.Binding {
 	}
 }
 
-func (d *Detail) Status() theme.PillState {
+func (d *Detail) Status() component.Status {
 	if d.notFound || (d.lastOK.IsZero() && d.result.Prompt.PromptID == "") {
-		return theme.PillNoDaemon
-	}
-	if d.stale {
-		return theme.PillStale
-	}
-	return theme.PillLive
-}
-
-func (d *Detail) statusFor() component.Status {
-	switch d.Status() {
-	case theme.PillLive:
-		return component.StatusLive
-	case theme.PillStale:
-		return component.StatusStale
-	default:
 		return component.StatusNoDaemon
 	}
+	if d.stale {
+		return component.StatusStale
+	}
+	return component.StatusLive
 }
 
 func (d *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
@@ -129,17 +118,17 @@ func (d *Detail) View(width, height int) string {
 
 	// Header
 	brand := th.Title.Render(th.Glyphs.Brand + " cco")
-	bread := th.Muted2.Render(" · prompt " + shortID(d.promptID))
-	pill := component.StatusPill(th, d.statusFor())
+	bread := th.Muted.Render(" · prompt " + shortID(d.promptID))
+	pill := component.StatusPill(th, d.Status())
 	headerRight := lipgloss.NewStyle().Width(width - lipgloss.Width(brand) - lipgloss.Width(bread)).Align(lipgloss.Right).Render(pill)
 	header := lipgloss.JoinHorizontal(lipgloss.Top, brand, bread, headerRight)
 
 	if d.notFound {
-		body := th.Muted2.Render("prompt not found — it may have been pruned")
+		body := th.Muted.Render("prompt not found — it may have been pruned")
 		return strings.Join([]string{header, "", component.Card(th, "", body, width)}, "\n")
 	}
 	if d.result.Prompt.PromptID == "" {
-		body := th.Muted2.Render("loading…")
+		body := th.Muted.Render("loading…")
 		return strings.Join([]string{header, "", component.Card(th, "", body, width)}, "\n")
 	}
 
@@ -149,10 +138,10 @@ func (d *Detail) View(width, height int) string {
 		dur = int64(p.EndedAt.Sub(p.StartedAt).Seconds())
 	}
 	info := strings.Join([]string{
-		th.Muted2.Render("session "), th.Accent.Render(shortID(p.SessionID)),
-		th.Muted2.Render(" · started "), th.Accent.Render(p.StartedAt.Format("15:04:05")),
-		th.Muted2.Render(" · duration "), th.Accent.Render(fmt.Sprintf("%ds", dur)),
-		th.Muted2.Render(" · "), th.Accent.Render(fmt.Sprintf("%d chars", p.PromptLength)),
+		th.Muted.Render("session "), th.Accent.Render(shortID(p.SessionID)),
+		th.Muted.Render(" · started "), th.Accent.Render(p.StartedAt.Format("15:04:05")),
+		th.Muted.Render(" · duration "), th.Accent.Render(fmt.Sprintf("%ds", dur)),
+		th.Muted.Render(" · "), th.Accent.Render(fmt.Sprintf("%d chars", p.PromptLength)),
 	}, "")
 
 	// 3 summary cards
@@ -164,7 +153,7 @@ func (d *Detail) View(width, height int) string {
 		cardContent = 8
 	}
 	costBody := th.Value.Render(fmt.Sprintf("$%.2f", p.CostUSD)) + "\n\n" +
-		th.Muted2.Render(fmt.Sprintf("%d api requests", p.APIRequests))
+		th.Muted.Render(fmt.Sprintf("%d api requests", p.APIRequests))
 	tokensBody := strings.Join([]string{
 		labelValue(th, "in", fmt.Sprintf("%d", p.InputTokens), cardContent),
 		labelValue(th, "out", fmt.Sprintf("%d", p.OutputTokens), cardContent),
@@ -191,7 +180,7 @@ func (d *Detail) View(width, height int) string {
 	}
 	apiCard := component.Card(th, "api requests", strings.Join(apiRows, "\n"), width)
 	if len(apiRows) == 0 {
-		apiCard = component.Card(th, "api requests", th.Muted2.Render("(none)"), width)
+		apiCard = component.Card(th, "api requests", th.Muted.Render("(none)"), width)
 	}
 
 	// tool calls card
@@ -208,7 +197,7 @@ func (d *Detail) View(width, height int) string {
 	}
 	tcCard := component.Card(th, "tool calls", strings.Join(tcRows, "\n"), width)
 	if len(tcRows) == 0 {
-		tcCard = component.Card(th, "tool calls", th.Muted2.Render("(none)"), width)
+		tcCard = component.Card(th, "tool calls", th.Muted.Render("(none)"), width)
 	}
 
 	help := component.HelpBar(th, []component.KeyHint{

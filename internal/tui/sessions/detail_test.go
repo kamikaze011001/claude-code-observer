@@ -13,6 +13,7 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/prompt"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
 
 func TestDetail_KeyJK(t *testing.T) {
@@ -61,15 +62,16 @@ func TestDetail_EnterOnNonPromptDoesNothing(t *testing.T) {
 func TestDetail_StatusPill(t *testing.T) {
 	t.Parallel()
 	m := NewDetail(nil, "s1", nil).(*Detail)
-	if m.Status() != theme.PillNoDaemon {
+	if m.Status() != component.StatusNoDaemon {
 		t.Fatal("empty status")
 	}
 	m.events = []readstore.EventRow{{}}
-	if m.Status() != theme.PillLive {
+	m.lastOK = time.Now()
+	if m.Status() != component.StatusLive {
 		t.Fatal("with events")
 	}
 	m.stale = true
-	if m.Status() != theme.PillStale {
+	if m.Status() != component.StatusStale {
 		t.Fatal("stale")
 	}
 }

@@ -21,7 +21,7 @@ func HelpBar(t *theme.Theme, hints []KeyHint, width int) string {
 		if i > 0 {
 			parts = append(parts, "  ")
 		}
-		parts = append(parts, t.Muted2.Render(h.Key+" "+h.Desc))
+		parts = append(parts, t.Muted.Render(h.Key+" "+h.Desc))
 	}
 	line := strings.Join(parts, "")
 	return lipgloss.NewStyle().Width(width).Render(line)

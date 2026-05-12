@@ -13,6 +13,7 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/sessions"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
 
 const fetchTimeout = 500 * time.Millisecond
@@ -122,20 +123,20 @@ func (m *Model) ShortHelp() []key.Binding {
 const staleAfter = 30 * time.Second
 
 // Status implements app.View. Returns the pill state the shell should show.
-func (m *Model) Status() theme.PillState {
+func (m *Model) Status() component.Status {
 	if m.snap.LatestEventTS == 0 && len(m.top) == 0 && m.lastOK.IsZero() {
-		return theme.PillNoDaemon
+		return component.StatusNoDaemon
 	}
 	if m.stale {
-		return theme.PillStale
+		return component.StatusStale
 	}
 	if m.snap.LatestEventTS != 0 {
 		latest := time.Unix(0, m.snap.LatestEventTS)
 		if m.now().Sub(latest) > staleAfter {
-			return theme.PillStale
+			return component.StatusStale
 		}
 	}
-	return theme.PillLive
+	return component.StatusLive
 }
 
 func (m *Model) fetchCmd() tea.Cmd {

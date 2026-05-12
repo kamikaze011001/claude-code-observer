@@ -91,19 +91,8 @@ func (m *List) ShortHelp() []key.Binding {
 	}
 }
 
-// Status reports the current pill state for the footer (legacy chrome API; kept for PR 7).
-func (m *List) Status() theme.PillState {
-	if m.lastOK.IsZero() && len(m.rows) == 0 {
-		return theme.PillNoDaemon
-	}
-	if m.stale {
-		return theme.PillStale
-	}
-	return theme.PillLive
-}
-
-// statusFor maps to the component.Status type used for the in-view pill.
-func (m *List) statusFor() component.Status {
+// Status reports the current connection state for the footer pill.
+func (m *List) Status() component.Status {
 	if m.lastOK.IsZero() && len(m.rows) == 0 {
 		return component.StatusNoDaemon
 	}
@@ -194,7 +183,7 @@ func (m *List) Update(msg tea.Msg) (app.View, tea.Cmd) {
 func (m *List) View(width, height int) string {
 	th := m.theme
 	if th == nil {
-		d := theme.Default()
+		d := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
 		th = &d
 	}
 	if width <= 0 {
@@ -203,14 +192,14 @@ func (m *List) View(width, height int) string {
 
 	// Header: brand · sessions · page · pill
 	brand := th.Title.Render(th.Glyphs.Brand + " cco")
-	bread := th.Muted2.Render(fmt.Sprintf(" · sessions    page %d", len(m.prevCurs)+1))
-	pill := component.StatusPill(th, m.statusFor())
+	bread := th.Muted.Render(fmt.Sprintf(" · sessions    page %d", len(m.prevCurs)+1))
+	pill := component.StatusPill(th, m.Status())
 	headerRight := lipgloss.NewStyle().Width(width - lipgloss.Width(brand) - lipgloss.Width(bread)).Align(lipgloss.Right).Render(pill)
 	header := lipgloss.JoinHorizontal(lipgloss.Top, brand, bread, headerRight)
 
 	// Body card
 	if len(m.rows) == 0 {
-		body := th.Muted2.Render("no sessions yet — start using Claude Code with cco serve running")
+		body := th.Muted.Render("no sessions yet — start using Claude Code with cco serve running")
 		card := component.Card(th, "", body, width)
 		help := component.HelpBar(th, m.helpHints(), width)
 		return strings.Join([]string{header, "", card, "", help}, "\n")
@@ -222,7 +211,7 @@ func (m *List) View(width, height int) string {
 	if inner < 8 {
 		inner = 8
 	}
-	columnHeader := th.Muted2.Render(formatColHeader(inner))
+	columnHeader := th.Muted.Render(formatColHeader(inner))
 	rows := []string{columnHeader}
 	for i, r := range m.rows {
 		rd := component.SessionRowData{
@@ -243,7 +232,7 @@ func (m *List) View(width, height int) string {
 	help := component.HelpBar(th, m.helpHints(), width)
 	parts := []string{header, "", card}
 	if m.nextCur != nil {
-		parts = append(parts, th.Muted2.Render("press pgdn for next page"))
+		parts = append(parts, th.Muted.Render("press pgdn for next page"))
 	}
 	parts = append(parts, "", help)
 	return strings.Join(parts, "\n")

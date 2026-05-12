@@ -15,7 +15,7 @@ import (
 // resolvedTheme returns the model's theme pointer if set, else a pointer to
 // the package-level default. This avoids a nil-deref in tests that set only
 // specific model fields.
-var fallbackTheme = func() *theme.Theme { t := theme.Default(); return &t }()
+var fallbackTheme = func() *theme.Theme { t := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs()); return &t }()
 
 func (m *Model) th() *theme.Theme {
 	if m.theme != nil {
@@ -49,19 +49,10 @@ func (m *Model) View(width, height int) string {
 
 func (m *Model) renderHeader(t *theme.Theme, width int) string {
 	brand := t.Title.Render(t.Glyphs.Brand + " cco")
-	breadcrumb := t.Muted2.Render(" · dashboard")
+	breadcrumb := t.Muted.Render(" · dashboard")
 	left := brand + breadcrumb
 
-	var st component.Status
-	switch m.Status() {
-	case theme.PillLive:
-		st = component.StatusLive
-	case theme.PillStale:
-		st = component.StatusStale
-	default:
-		st = component.StatusNoDaemon
-	}
-	pill := component.StatusPill(t, st)
+	pill := component.StatusPill(t, m.Status())
 	pillW := lipgloss.Width(pill)
 	leftW := width - pillW
 	if leftW < 0 {
@@ -164,7 +155,7 @@ func (m *Model) renderTopSessions(t *theme.Theme, width int) string {
 	}
 	if len(m.top) == 0 {
 		return component.Card(t, "top sessions today (by cost)",
-			t.Muted2.Render("(no sessions today)"), width)
+			t.Muted.Render("(no sessions today)"), width)
 	}
 	var b strings.Builder
 	for i, ts := range m.top {
@@ -191,7 +182,7 @@ func (m *Model) renderRecentSessions(t *theme.Theme, width int) string {
 	}
 	if len(m.recent) == 0 {
 		return component.Card(t, "recent sessions",
-			t.Muted2.Render("(no sessions today)"), width)
+			t.Muted.Render("(no sessions today)"), width)
 	}
 	var b strings.Builder
 	for i, ts := range m.recent {

@@ -15,6 +15,7 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
 
 func TestMain(m *testing.M) {
@@ -112,12 +113,12 @@ func TestDetail_TickAfterDataRefetches(t *testing.T) {
 func TestDetail_StatusPill(t *testing.T) {
 	t.Parallel()
 	d := New(nil, "p", nil).(*Detail)
-	if d.Status() != theme.PillNoDaemon {
+	if d.Status() != component.StatusNoDaemon {
 		t.Fatal("empty status")
 	}
 	d.notFound = true
-	if d.Status() != theme.PillNoDaemon {
-		t.Fatal("not-found should still be no-daemon-equivalent")
+	if d.Status() != component.StatusNoDaemon {
+		t.Fatal("not-found should still be StatusNoDaemon")
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
 
 // fakeView is a no-op View used for stack assertions.
@@ -22,10 +23,10 @@ func (v *fakeView) Update(m tea.Msg) (View, tea.Cmd) { v.lastMsg = m; return v, 
 func (v *fakeView) View(w, h int) string             { return v.title }
 func (v *fakeView) Title() string                    { return v.title }
 func (v *fakeView) ShortHelp() []key.Binding         { return nil }
-func (v *fakeView) Status() theme.PillState          { return theme.PillLive }
+func (v *fakeView) Status() component.Status { return component.StatusLive }
 
 func newAppWith(views ...View) *App {
-	a := New(theme.Default())
+	a := New(theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs()))
 	for _, v := range views {
 		a.Push(v)
 	}

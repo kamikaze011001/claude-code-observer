@@ -15,6 +15,7 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
 
 func TestMain(m *testing.M) {
@@ -161,16 +162,17 @@ func TestList_KeyGTopAndShiftGBottom(t *testing.T) {
 func TestList_StatusPill(t *testing.T) {
 	t.Parallel()
 	m := NewList(nil, nil)
-	if m.Status() != theme.PillNoDaemon {
-		t.Fatalf("empty model status=%v want PillNoDaemon", m.Status())
+	if m.Status() != component.StatusNoDaemon {
+		t.Fatalf("empty model status=%v want StatusNoDaemon", m.Status())
 	}
 	m.rows = []readstore.SessionRow{{SessionID: "a"}}
-	if m.Status() != theme.PillLive {
-		t.Fatalf("with rows status=%v want PillLive", m.Status())
+	m.lastOK = time.Now()
+	if m.Status() != component.StatusLive {
+		t.Fatalf("with rows status=%v want StatusLive", m.Status())
 	}
 	m.stale = true
-	if m.Status() != theme.PillStale {
-		t.Fatalf("stale status=%v want PillStale", m.Status())
+	if m.Status() != component.StatusStale {
+		t.Fatalf("stale status=%v want StatusStale", m.Status())
 	}
 }
 

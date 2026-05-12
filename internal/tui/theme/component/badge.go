@@ -17,7 +17,7 @@ func ModelBadge(t *theme.Theme, model string) string {
 	case "haiku":
 		return t.BadgeHaiku.Render(" haiku ")
 	}
-	return t.Muted2.Render(" model ")
+	return t.Muted.Render(" model ")
 }
 
 func familyFor(model string) string {

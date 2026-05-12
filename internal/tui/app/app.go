@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
 
 // App is the Bubble Tea root model. It owns the view stack, the global
@@ -104,15 +106,15 @@ func (a *App) View() string {
 func (a *App) safeRender(v View) (out string) {
 	defer func() {
 		if r := recover(); r != nil {
-			out = a.theme.ErrorText.Render("⚠ VIEW ERROR — b TO RETURN")
+			out = lipgloss.NewStyle().Foreground(a.theme.Palette.Red).Bold(true).Render("⚠ VIEW ERROR — b TO RETURN")
 		}
 	}()
 	return v.View(a.width, a.height)
 }
 
 func (a *App) renderChrome(v View, body string) string {
-	title := a.theme.Heading.Render("CCO  │  " + v.Title())
-	pill := a.theme.Pill(v.Status())
+	title := a.theme.Title.Render("CCO  │  " + v.Title())
+	pill := component.StatusPill(&a.theme, v.Status())
 	helps := []string{}
 	for _, k := range v.ShortHelp() {
 		h := k.Help()

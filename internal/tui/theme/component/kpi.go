@@ -34,7 +34,7 @@ func RenderDeltaInline(t *theme.Theme, dir Direction, text string) string {
 		style = lipgloss.NewStyle().Foreground(t.Palette.Red)
 	default:
 		glyph = t.Glyphs.DeltaFlat
-		style = t.Muted2
+		style = t.Muted
 	}
 	return style.Render(glyph + " " + text)
 }
@@ -54,7 +54,7 @@ func KPI(t *theme.Theme, label, value string, d *Delta, width int) string {
 			glyph = t.Glyphs.DeltaDown
 			styled = lipgloss.NewStyle().Foreground(t.Palette.Red).Render(glyph + " " + d.Text)
 		default:
-			styled = t.Muted2.Render(t.Glyphs.DeltaFlat + " " + d.Text)
+			styled = t.Muted.Render(t.Glyphs.DeltaFlat + " " + d.Text)
 		}
 		parts = append(parts, "  ", styled)
 	}
