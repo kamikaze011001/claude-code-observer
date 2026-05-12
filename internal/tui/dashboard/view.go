@@ -152,7 +152,7 @@ func (m *Model) renderTopSessions(t *theme.Theme, width int) string {
 	for i, ts := range m.top {
 		rd := component.SessionRowData{
 			Index:       i + 1,
-			Started:     time.Unix(0, ts.StartedAt).UTC(),
+			Started:     time.Unix(0, ts.StartedAt).Local(),
 			ProjectName: ts.ProjectName,
 			CostUSD:     ts.CostUSD,
 			Prompts:     ts.Prompts,
@@ -179,7 +179,7 @@ func (m *Model) renderRecentSessions(t *theme.Theme, width int) string {
 	for i, ts := range m.recent {
 		rd := component.SessionRowData{
 			Index:       i + 1,
-			Started:     time.Unix(0, ts.StartedAt).UTC(),
+			Started:     time.Unix(0, ts.StartedAt).Local(),
 			ProjectName: ts.ProjectName,
 			CostUSD:     ts.CostUSD,
 			Prompts:     ts.Prompts,

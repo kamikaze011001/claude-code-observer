@@ -67,10 +67,10 @@ LIMIT ?`
 		if err := rows.Scan(&r.SessionID, &r.ProjectName, &started, &lastSeen, &ended, &r.CostUSD, &r.Prompts, &r.Tokens); err != nil {
 			return nil, nil, fmt.Errorf("sessions page scan: %w", err)
 		}
-		r.StartedAt = time.Unix(0, started).UTC()
-		r.LastSeenAt = time.Unix(0, lastSeen).UTC()
+		r.StartedAt = time.Unix(0, started).Local()
+		r.LastSeenAt = time.Unix(0, lastSeen).Local()
 		if ended.Valid {
-			r.EndedAt = time.Unix(0, ended.Int64).UTC()
+			r.EndedAt = time.Unix(0, ended.Int64).Local()
 			r.DurationSec = (ended.Int64 - started) / int64(time.Second)
 		} else {
 			r.Live = true
@@ -121,7 +121,7 @@ type TopSession struct {
 // DashboardSnapshot returns the three-window rollup plus the top-3 most
 // expensive sessions started today (UTC). now is injected for testability.
 func DashboardSnapshot(ctx context.Context, db *sql.DB, now time.Time) (Snapshot, []TopSession, error) {
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	today := startOfDay.UnixNano()
 	d7 := startOfDay.Add(-7 * 24 * time.Hour).UnixNano()
 	d30 := startOfDay.Add(-30 * 24 * time.Hour).UnixNano()
@@ -237,7 +237,7 @@ func RecentSessionsToday(ctx context.Context, db *sql.DB, now time.Time, limit i
 	if limit <= 0 {
 		limit = 5
 	}
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).UnixNano()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).UnixNano()
 	const q = `
 SELECT session_id, COALESCE(project_name, ''), started_at, cost_usd, prompts, ended_at IS NULL
 FROM sessions
@@ -308,7 +308,7 @@ LIMIT ?`
 		if err := rows.Scan(&ts, &r.EventName, &r.PromptID, &attrs); err != nil {
 			return nil, false, fmt.Errorf("session events scan: %w", err)
 		}
-		r.TS = time.Unix(0, ts).UTC()
+		r.TS = time.Unix(0, ts).Local()
 		r.Summary = summarize(r.EventName, attrs)
 		out = append(out, r)
 	}
@@ -392,9 +392,9 @@ FROM prompts WHERE prompt_id = ?`
 	if err != nil {
 		return PromptDetailResult{}, fmt.Errorf("prompt detail: %w", err)
 	}
-	p.StartedAt = time.Unix(0, started).UTC()
+	p.StartedAt = time.Unix(0, started).Local()
 	if ended.Valid {
-		p.EndedAt = time.Unix(0, ended.Int64).UTC()
+		p.EndedAt = time.Unix(0, ended.Int64).Local()
 	}
 	p.HadError = hadErr == 1
 
@@ -418,7 +418,7 @@ ORDER BY ts`, promptID)
 		if err := evRows.Scan(&ts, &eventName, &attrs); err != nil {
 			return PromptDetailResult{}, fmt.Errorf("prompt event scan: %w", err)
 		}
-		ev := time.Unix(0, ts).UTC()
+		ev := time.Unix(0, ts).Local()
 		var a map[string]any
 		_ = json.Unmarshal(attrs, &a)
 		switch eventName {

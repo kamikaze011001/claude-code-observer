@@ -17,6 +17,11 @@ import (
 
 func TestMain(m *testing.M) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
+	// Pin local timezone to UTC so golden snapshots are machine-independent.
+	// The view layer uses .Local() for display; tests must agree on a locale.
+	if err := os.Setenv("TZ", "UTC"); err == nil {
+		time.Local = time.UTC
+	}
 	os.Exit(m.Run())
 }
 
