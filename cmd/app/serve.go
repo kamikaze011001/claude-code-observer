@@ -14,6 +14,7 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/retention"
 	"github.com/kamikaze011001/claude-code-observer/internal/scheduler"
 	"github.com/kamikaze011001/claude-code-observer/internal/service"
+	"github.com/kamikaze011001/claude-code-observer/internal/version"
 )
 
 const (
@@ -115,5 +116,5 @@ func readSchemaVersion(ctx context.Context, repo *repository.Repository) (int, e
 }
 
 func versionString() string {
-	return fmt.Sprintf("%s (commit %s)", version, commit)
+	return fmt.Sprintf("%s (commit %s)", version.Version, version.Commit)
 }

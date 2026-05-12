@@ -9,12 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Set via -ldflags "-X main.version=... -X main.commit=..."
-var (
-	version = "dev"
-	commit  = "none"
-)
-
 // Resolved at root PersistentPreRun and read by subcommands.
 var (
 	homeDir  string
