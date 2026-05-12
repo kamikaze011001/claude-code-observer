@@ -560,3 +560,66 @@ func TestSessionsPage_IncludesTokens(t *testing.T) {
 		t.Errorf("tokens: got %d want %d", got, want)
 	}
 }
+
+// TestRecentSessionsToday_LocalMidnight verifies that the "today" window
+// is computed against local midnight, not UTC midnight. Regression guard
+// for the timezone-display fix: a user in GMT+7 viewing the dashboard
+// at 02:00 local on 2026-05-12 must see events between
+// 2026-05-12T00:00+07:00 (= 2026-05-11T17:00Z) and now as "today".
+func TestRecentSessionsToday_LocalMidnight(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	gmt7 := time.FixedZone("GMT+7", 7*3600)
+	// 2026-05-12 02:00 local = 2026-05-11 19:00 UTC
+	now := time.Date(2026, 5, 12, 2, 0, 0, 0, gmt7)
+	// Local midnight 2026-05-12 = 2026-05-11 17:00 UTC
+	localMidnight := time.Date(2026, 5, 12, 0, 0, 0, 0, gmt7)
+
+	ins := func(id string, started time.Time) {
+		_, err := repo.DB().ExecContext(context.Background(),
+			`INSERT INTO sessions
+			 (session_id, project_name, started_at, last_seen_at, ended_at,
+			  cost_usd, prompts, tool_calls, api_errors,
+			  input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
+			 VALUES (?, ?, ?, ?, NULL, 0, 0, 0, 0, 0, 0, 0, 0)`,
+			id, "obs", started.UnixNano(), started.UnixNano())
+		if err != nil {
+			t.Fatalf("insert %s: %v", id, err)
+		}
+	}
+
+	// After local midnight — must be included.
+	ins("after", localMidnight.Add(1*time.Hour))
+	// Before local midnight (still UTC same day before noon UTC) — must be excluded.
+	ins("before", localMidnight.Add(-2*time.Hour))
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	rows, err := readstore.RecentSessionsToday(context.Background(), pool, now, 10)
+	if err != nil {
+		t.Fatalf("RecentSessionsToday: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows: got %d want 1 (only the post-local-midnight row); rows=%+v", len(rows), rows)
+	}
+	if rows[0].SessionID != "after" {
+		t.Errorf("session: got %q want %q", rows[0].SessionID, "after")
+	}
+
+	snap, _, err := readstore.DashboardSnapshot(context.Background(), pool, now)
+	if err != nil {
+		t.Fatalf("DashboardSnapshot: %v", err)
+	}
+	if got, want := snap.Today.Sessions, int64(1); got != want {
+		t.Errorf("today sessions: got %d want %d", got, want)
+	}
+}
