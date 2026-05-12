@@ -8,10 +8,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/about"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/dashboard"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/version"
 )
 
 func newTUICmd() *cobra.Command {
@@ -31,7 +33,10 @@ func newTUICmd() *cobra.Command {
 			envIcons := os.Getenv("CCO_ICONS")
 			colorFGBG := os.Getenv("COLORFGBG")
 			th, _, _ := theme.Resolve(themeName, iconsName, envTheme, envIcons, colorFGBG)
-			shell := app.New(th)
+			aboutFactory := func() app.View {
+				return about.New(&th, version.Version, version.Commit)
+			}
+			shell := app.New(th, aboutFactory)
 			shell.Push(dashboard.New(pool, &th))
 
 			prog := tea.NewProgram(shell, tea.WithAltScreen(), tea.WithContext(cmd.Context()))

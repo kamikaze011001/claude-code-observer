@@ -25,8 +25,12 @@ func (v *fakeView) Title() string                    { return v.title }
 func (v *fakeView) ShortHelp() []key.Binding         { return nil }
 func (v *fakeView) Status() component.Status { return component.StatusLive }
 
+// aboutFactoryStub returns a fakeView titled "ABOUT" so tests can assert
+// the help key pushes the right view without depending on internal/tui/about.
+func aboutFactoryStub() View { return &fakeView{title: "ABOUT"} }
+
 func newAppWith(views ...View) *App {
-	a := New(theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs()))
+	a := New(theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs()), aboutFactoryStub)
 	for _, v := range views {
 		a.Push(v)
 	}
@@ -114,5 +118,20 @@ func TestApp_ConsecErrsResetOnSuccess(t *testing.T) {
 	a.Update(TickMsg{})
 	if a.ConsecutiveErrors() != 0 {
 		t.Fatalf("non-Err forward should reset, got %d", a.ConsecutiveErrors())
+	}
+}
+
+func TestApp_HelpKeyPushesAboutView(t *testing.T) {
+	a := newAppWith(&fakeView{title: "A"})
+	_, _ = a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	if got := a.StackDepth(); got != 2 {
+		t.Fatalf("? should push the about view, depth=%d", got)
+	}
+	if top := a.Top(); top == nil || top.Title() != "ABOUT" {
+		var got string
+		if top != nil {
+			got = top.Title()
+		}
+		t.Fatalf("top view title = %q, want %q", got, "ABOUT")
 	}
 }
