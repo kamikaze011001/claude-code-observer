@@ -13,6 +13,7 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 )
 
+
 func TestDashboardSnapshot_AggregatesByWindow(t *testing.T) {
 	home := t.TempDir()
 	repo, err := repository.Open(home)
@@ -27,24 +28,25 @@ func TestDashboardSnapshot_AggregatesByWindow(t *testing.T) {
 	tenDaysAgo := startOfDay.Add(-10 * 24 * time.Hour)
 	fortyDaysAgo := startOfDay.Add(-40 * 24 * time.Hour)
 
-	insertSession := func(id, project string, started time.Time, cost float64, prompts, tools, errors int) {
+	insertSession := func(id, project string, started time.Time, cost float64, prompts, tools, errors int, inTok, outTok int64) {
 		_, err := repo.DB().ExecContext(context.Background(),
 			`INSERT INTO sessions
 			 (session_id, project_name, started_at, last_seen_at,
-			  cost_usd, prompts, tool_calls, api_errors)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			  cost_usd, prompts, tool_calls, api_errors,
+			  input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
 			id, project, started.UnixNano(), started.UnixNano(),
-			cost, prompts, tools, errors)
+			cost, prompts, tools, errors, inTok, outTok)
 		if err != nil {
 			t.Fatalf("insert: %v", err)
 		}
 	}
 
-	insertSession("today1", "obs", now, 1.50, 5, 20, 1)
-	insertSession("today2", "obs", now.Add(time.Hour), 0.80, 3, 12, 0)
-	insertSession("d2", "scratch", twoDaysAgo, 2.00, 8, 30, 0)
-	insertSession("d10", "obs", tenDaysAgo, 4.00, 10, 40, 2)
-	insertSession("d40", "obs", fortyDaysAgo, 99.00, 100, 500, 50)
+	insertSession("today1", "obs", now, 1.50, 5, 20, 1, 1000, 200)
+	insertSession("today2", "obs", now.Add(time.Hour), 0.80, 3, 12, 0, 500, 100)
+	insertSession("d2", "scratch", twoDaysAgo, 2.00, 8, 30, 0, 2000, 400)
+	insertSession("d10", "obs", tenDaysAgo, 4.00, 10, 40, 2, 3000, 600)
+	insertSession("d40", "obs", fortyDaysAgo, 99.00, 100, 500, 50, 99999, 99999)
 
 	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
 	if err != nil {
@@ -71,6 +73,23 @@ func TestDashboardSnapshot_AggregatesByWindow(t *testing.T) {
 	}
 	if got, want := snap.D30.Errors, int64(3); got != want {
 		t.Errorf("30d errors: got %d want %d", got, want)
+	}
+	if got, want := snap.Today.Sessions, int64(2); got != want {
+		t.Errorf("today sessions: got %d want %d", got, want)
+	}
+	if got, want := snap.Today.Tokens, int64(1800); got != want { // 1000+200 + 500+100
+		t.Errorf("today tokens: got %d want %d", got, want)
+	}
+	if got, want := snap.D7.Sessions, int64(3); got != want {
+		t.Errorf("7d sessions: got %d want %d", got, want)
+	}
+	if got, want := snap.D30.Tokens, int64(7800); got != want { // 1800 (today) + 2400 (d2) + 3600 (d10)
+		t.Errorf("30d tokens: got %d want %d", got, want)
+	}
+	// Yesterday window covers [startOfDay-24h, startOfDay). None of our seeded
+	// rows fall in that window, so Yesterday should be zero.
+	if got, want := snap.Yesterday.Sessions, int64(0); got != want {
+		t.Errorf("yesterday sessions: got %d want %d", got, want)
 	}
 
 	if len(top) != 2 {
@@ -399,5 +418,208 @@ func TestPromptDetail_NotFound(t *testing.T) {
 	_, err := readstore.PromptDetail(t.Context(), db, "missing")
 	if !errors.Is(err, readstore.ErrNotFound) {
 		t.Fatalf("err=%v want ErrNotFound", err)
+	}
+}
+
+func TestDashboardSnapshot_YesterdayWindow(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	startOfDay := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	yesterday := startOfDay.Add(-3 * time.Hour) // inside yesterday window
+
+	_, err = repo.DB().ExecContext(context.Background(),
+		`INSERT INTO sessions
+		 (session_id, project_name, started_at, last_seen_at,
+		  cost_usd, prompts, tool_calls, api_errors,
+		  input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
+		 VALUES ('y1', 'obs', ?, ?, 1.23, 2, 5, 0, 100, 50, 0, 0)`,
+		yesterday.UnixNano(), yesterday.UnixNano())
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	snap, _, err := readstore.DashboardSnapshot(context.Background(), pool, now)
+	if err != nil {
+		t.Fatalf("DashboardSnapshot: %v", err)
+	}
+
+	if got, want := snap.Yesterday.Sessions, int64(1); got != want {
+		t.Errorf("yesterday sessions: got %d want %d", got, want)
+	}
+	if got, want := snap.Yesterday.CostUSD, 1.23; got != want {
+		t.Errorf("yesterday cost: got %.2f want %.2f", got, want)
+	}
+	if got, want := snap.Yesterday.Tokens, int64(150); got != want {
+		t.Errorf("yesterday tokens: got %d want %d", got, want)
+	}
+}
+
+func TestRecentSessionsToday(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	startOfDay := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+
+	ins := func(id, project string, started time.Time, cost float64, prompts int64, ended *time.Time) {
+		endedNS := sql.NullInt64{}
+		if ended != nil {
+			endedNS.Valid = true
+			endedNS.Int64 = ended.UnixNano()
+		}
+		_, err := repo.DB().ExecContext(context.Background(),
+			`INSERT INTO sessions
+			 (session_id, project_name, started_at, last_seen_at, ended_at,
+			  cost_usd, prompts, tool_calls, api_errors,
+			  input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0)`,
+			id, project, started.UnixNano(), started.UnixNano(), endedNS,
+			cost, prompts)
+		if err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+	yEnded := now.Add(-2 * time.Hour)
+	ins("r1", "obs", now.Add(-10*time.Minute), 0.10, 1, nil)        // newest, live
+	ins("r2", "scratch", now.Add(-30*time.Minute), 0.20, 2, &yEnded)
+	ins("r3", "obs", now.Add(-3*time.Hour), 0.30, 3, &yEnded)
+	ins("r4", "obs", startOfDay.Add(-1*time.Hour), 9.99, 9, nil) // yesterday — excluded
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	rows, err := readstore.RecentSessionsToday(context.Background(), pool, now, 10)
+	if err != nil {
+		t.Fatalf("RecentSessionsToday: %v", err)
+	}
+
+	if len(rows) != 3 {
+		t.Fatalf("rows: got %d want 3", len(rows))
+	}
+	if rows[0].SessionID != "r1" || rows[1].SessionID != "r2" || rows[2].SessionID != "r3" {
+		t.Errorf("order wrong: %+v", rows)
+	}
+	if !rows[0].Live {
+		t.Errorf("r1 should be live")
+	}
+}
+
+func TestSessionsPage_IncludesTokens(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	started := time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC).UnixNano()
+	_, err = repo.DB().ExecContext(context.Background(),
+		`INSERT INTO sessions
+		 (session_id, project_name, started_at, last_seen_at,
+		  cost_usd, prompts,
+		  input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
+		 VALUES ('s1', 'obs', ?, ?, 1.00, 3, 1000, 200, 50, 10)`,
+		started, started)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	rows, _, err := readstore.SessionsPage(context.Background(), pool, nil, 10)
+	if err != nil {
+		t.Fatalf("SessionsPage: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows: got %d", len(rows))
+	}
+	if got, want := rows[0].Tokens, int64(1260); got != want {
+		t.Errorf("tokens: got %d want %d", got, want)
+	}
+}
+
+// TestRecentSessionsToday_LocalMidnight verifies that the "today" window
+// is computed against local midnight, not UTC midnight. Regression guard
+// for the timezone-display fix: a user in GMT+7 viewing the dashboard
+// at 02:00 local on 2026-05-12 must see events between
+// 2026-05-12T00:00+07:00 (= 2026-05-11T17:00Z) and now as "today".
+func TestRecentSessionsToday_LocalMidnight(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	gmt7 := time.FixedZone("GMT+7", 7*3600)
+	// 2026-05-12 02:00 local = 2026-05-11 19:00 UTC
+	now := time.Date(2026, 5, 12, 2, 0, 0, 0, gmt7)
+	// Local midnight 2026-05-12 = 2026-05-11 17:00 UTC
+	localMidnight := time.Date(2026, 5, 12, 0, 0, 0, 0, gmt7)
+
+	ins := func(id string, started time.Time) {
+		_, err := repo.DB().ExecContext(context.Background(),
+			`INSERT INTO sessions
+			 (session_id, project_name, started_at, last_seen_at, ended_at,
+			  cost_usd, prompts, tool_calls, api_errors,
+			  input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
+			 VALUES (?, ?, ?, ?, NULL, 0, 0, 0, 0, 0, 0, 0, 0)`,
+			id, "obs", started.UnixNano(), started.UnixNano())
+		if err != nil {
+			t.Fatalf("insert %s: %v", id, err)
+		}
+	}
+
+	// After local midnight — must be included.
+	ins("after", localMidnight.Add(1*time.Hour))
+	// Before local midnight (still UTC same day before noon UTC) — must be excluded.
+	ins("before", localMidnight.Add(-2*time.Hour))
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	rows, err := readstore.RecentSessionsToday(context.Background(), pool, now, 10)
+	if err != nil {
+		t.Fatalf("RecentSessionsToday: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows: got %d want 1 (only the post-local-midnight row); rows=%+v", len(rows), rows)
+	}
+	if rows[0].SessionID != "after" {
+		t.Errorf("session: got %q want %q", rows[0].SessionID, "after")
+	}
+
+	snap, _, err := readstore.DashboardSnapshot(context.Background(), pool, now)
+	if err != nil {
+		t.Fatalf("DashboardSnapshot: %v", err)
+	}
+	if got, want := snap.Today.Sessions, int64(1); got != want {
+		t.Errorf("today sessions: got %d want %d", got, want)
 	}
 }

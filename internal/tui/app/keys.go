@@ -17,6 +17,6 @@ func DefaultKeys() GlobalKeys {
 		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 		Back:    key.NewBinding(key.WithKeys("b", "esc"), key.WithHelp("b", "back")),
 		Refresh: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
-		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "about")),
 	}
 }

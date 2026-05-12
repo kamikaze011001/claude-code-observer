@@ -9,102 +9,198 @@ import (
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
 
-// defaultTheme is memoized to avoid allocating a new theme on every frame.
-var defaultTheme = theme.Default()
+// resolvedTheme returns the model's theme pointer if set, else a pointer to
+// the package-level default. This avoids a nil-deref in tests that set only
+// specific model fields.
+var fallbackTheme = func() *theme.Theme { t := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs()); return &t }()
 
-// View renders the dashboard body.
+func (m *Model) th() *theme.Theme {
+	if m.theme != nil {
+		return m.theme
+	}
+	return fallbackTheme
+}
+
+// View renders the dashboard body at the given terminal dimensions.
 func (m *Model) View(width, height int) string {
-	th := defaultTheme
 	if width <= 0 {
 		width = 80
 	}
-	blockW := (width - 4) / 3
-	if blockW < 16 {
-		blockW = 16
+	t := m.th()
+
+	var sections []string
+
+	sections = append(sections, m.renderWindowCards(t, width))
+
+	if delta := m.renderDeltaStrip(t, width); delta != "" {
+		sections = append(sections, delta)
 	}
 
-	blocks := []string{
-		m.renderBlock(th, blockW, "TODAY", m.snap.Today),
-		m.renderBlock(th, blockW, "7 DAYS", m.snap.D7),
-		m.renderBlock(th, blockW, "30 DAYS", m.snap.D30),
-	}
-	row := lipgloss.JoinHorizontal(lipgloss.Top, blocks...)
+	sections = append(sections, m.renderTopSessions(t, width))
+	sections = append(sections, m.renderRecentSessions(t, width))
+	sections = append(sections, m.renderHelpBar(t, width))
 
-	var banner string
-	if m.snap.LatestEventTS == 0 && len(m.top) == 0 {
-		banner = th.ErrorText.Render("⚠ NO DATA — IS `cco serve` RUNNING?")
-	}
-
-	tableW := blockW*3 + 4
-	table := m.renderTopSessions(th, tableW)
-
-	parts := []string{}
-	if banner != "" {
-		parts = append(parts, banner, "")
-	}
-	parts = append(parts, row, "", table)
-	return strings.Join(parts, "\n")
+	return strings.Join(sections, "\n")
 }
 
-func (m *Model) renderBlock(th theme.Theme, w int, label string, ws readstore.WindowStats) string {
-	cost := th.AccentText.Render(fmt.Sprintf("$%.2f", ws.CostUSD))
-	prompts := fmt.Sprintf("%d PROMPTS", ws.Prompts)
-	tools := fmt.Sprintf("%s TOOLS", humanInt(ws.Tools))
+func (m *Model) renderWindowCards(t *theme.Theme, width int) string {
+	cardW := (width - 2) / 3 // 3 cards + 2 single-space gutters = width
+	if cardW < 16 {
+		cardW = 16
+	}
+	today := renderWindowCard(t, "TODAY", m.snap.Today, cardW)
+	d7 := renderWindowCard(t, "7 DAYS", m.snap.D7, cardW)
+	d30 := renderWindowCard(t, "30 DAYS", m.snap.D30, cardW)
+	return lipgloss.JoinHorizontal(lipgloss.Top, today, " ", d7, " ", d30)
+}
 
-	errLine := th.MutedText.Render(fmt.Sprintf("%d ERRORS", ws.Errors))
+func renderWindowCard(t *theme.Theme, title string, ws readstore.WindowStats, cardW int) string {
+	// inner content width = cardW - 2 (border) - 4 (padding*2)
+	inner := cardW - 6
+	if inner < 8 {
+		inner = 8
+	}
+
+	// Pad labels to a uniform width so values line up in a column across all
+	// rows within the card. "sessions" (8) is the longest of the six labels;
+	// +2 spaces of gutter = labelCol of 10.
+	const labelCol = 10
+	labelStyle := func(s string) string {
+		return t.Label.Render(lipgloss.NewStyle().Width(labelCol).Render(s))
+	}
+
+	var b strings.Builder
+	writeKV := func(label, value string) {
+		row := labelStyle(label) + t.Value.Render(value)
+		b.WriteString(lipgloss.NewStyle().Width(inner).Render(row))
+		b.WriteString("\n")
+	}
+
+	writeKV("sessions", fmt.Sprintf("%d", ws.Sessions))
+	writeKV("prompts", fmt.Sprintf("%d", ws.Prompts))
+	writeKV("tokens", component.HumanInt(ws.Tokens))
+	writeKV("tools", component.HumanInt(ws.Tools))
+	writeKV("cost", fmt.Sprintf("$%.2f", ws.CostUSD))
+
+	errVal := fmt.Sprintf("%d", ws.Errors)
+	var errStyled string
 	if ws.Errors > 0 {
-		errLine = th.ErrorText.Render(fmt.Sprintf("⚠ %d ERRORS", ws.Errors))
+		errStyled = lipgloss.NewStyle().Foreground(t.Palette.Red).Render(errVal)
+	} else {
+		errStyled = t.Value.Render(errVal)
 	}
+	row := labelStyle("errors") + errStyled
+	b.WriteString(lipgloss.NewStyle().Width(inner).Render(row))
 
-	body := strings.Join([]string{
-		th.Heading.Render(label),
-		cost,
-		prompts,
-		tools,
-		errLine,
-	}, "\n")
-	return th.Block(w).Render(body)
+	return component.Card(t, title, b.String(), cardW)
 }
 
-func (m *Model) renderTopSessions(th theme.Theme, w int) string {
-	header := th.Heading.Render("TOP SESSIONS TODAY")
-	if len(m.top) == 0 {
-		return th.Block(w).Render(header + "\n" + th.MutedText.Render("(no sessions today)"))
+func (m *Model) renderDeltaStrip(t *theme.Theme, width int) string {
+	y := m.snap.Yesterday
+	tod := m.snap.Today
+	if y.Sessions == 0 {
+		return ""
 	}
-	rows := []string{header, "#  PROJECT          STARTED  COST    PROMPTS  STATUS"}
-	for i, ts := range m.top {
-		started := time.Unix(0, ts.StartedAt).UTC().Format("15:04")
-		project := truncate(ts.ProjectName, 16)
-		status := ""
-		if ts.Live {
-			status = th.AccentText.Render("● LIVE")
+
+	deltaDir := func(curr, prev int64) component.Direction {
+		switch {
+		case curr > prev:
+			return component.DeltaUp
+		case curr < prev:
+			return component.DeltaDown
+		default:
+			return component.DeltaFlat
 		}
-		costPlain := fmt.Sprintf("$%-6.2f", ts.CostUSD) // 7-char fixed width including $ sign
-		costStyled := th.AccentText.Render(costPlain)
-		rows = append(rows, fmt.Sprintf("%d  %-16s %-7s %s  %-7d %s",
-			i+1, project, started,
-			costStyled,
-			ts.Prompts, status))
 	}
-	return th.Block(w).Render(strings.Join(rows, "\n"))
+	deltaDirF := func(curr, prev float64) component.Direction {
+		switch {
+		case curr > prev:
+			return component.DeltaUp
+		case curr < prev:
+			return component.DeltaDown
+		default:
+			return component.DeltaFlat
+		}
+	}
+
+	sessD := component.RenderDeltaInline(t, deltaDir(tod.Sessions, y.Sessions),
+		fmt.Sprintf("%d→%d sessions", y.Sessions, tod.Sessions))
+	promD := component.RenderDeltaInline(t, deltaDir(tod.Prompts, y.Prompts),
+		fmt.Sprintf("%d→%d prompts", y.Prompts, tod.Prompts))
+	tokD := component.RenderDeltaInline(t, deltaDir(tod.Tokens, y.Tokens),
+		fmt.Sprintf("%s→%s tokens", component.HumanInt(y.Tokens), component.HumanInt(tod.Tokens)))
+	costD := component.RenderDeltaInline(t, deltaDirF(tod.CostUSD, y.CostUSD),
+		fmt.Sprintf("$%.2f→$%.2f cost", y.CostUSD, tod.CostUSD))
+
+	body := lipgloss.JoinHorizontal(lipgloss.Top, sessD, "   ", promD, "   ", tokD, "   ", costD)
+	return component.Card(t, "today vs yesterday", body, width)
 }
 
-func humanInt(n int64) string {
-	switch {
-	case n >= 1_000_000:
-		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
-	case n >= 1_000:
-		return fmt.Sprintf("%.1fk", float64(n)/1_000)
+func (m *Model) renderTopSessions(t *theme.Theme, width int) string {
+	inner := width - 6 // border + padding
+	if inner < 8 {
+		inner = 8
 	}
-	return fmt.Sprintf("%d", n)
+	if len(m.top) == 0 {
+		return component.Card(t, "top sessions today (by cost)",
+			t.Muted.Render("(no sessions today)"), width)
+	}
+	var b strings.Builder
+	for i, ts := range m.top {
+		rd := component.SessionRowData{
+			Index:       i + 1,
+			Started:     time.Unix(0, ts.StartedAt).Local(),
+			ProjectName: ts.ProjectName,
+			CostUSD:     ts.CostUSD,
+			Prompts:     ts.Prompts,
+			Live:        ts.Live,
+		}
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(component.SessionRow(t, rd, false, inner))
+	}
+	return component.Card(t, "top sessions today (by cost)", b.String(), width)
 }
 
-func truncate(s string, max int) string {
-	r := []rune(s)
-	if len(r) <= max {
-		return s
+func (m *Model) renderRecentSessions(t *theme.Theme, width int) string {
+	inner := width - 6 // border + padding
+	if inner < 8 {
+		inner = 8
 	}
-	return string(r[:max-1]) + "…"
+	if len(m.recent) == 0 {
+		return component.Card(t, "recent sessions",
+			t.Muted.Render("(no sessions today)"), width)
+	}
+	var b strings.Builder
+	for i, ts := range m.recent {
+		rd := component.SessionRowData{
+			Index:       i + 1,
+			Started:     time.Unix(0, ts.StartedAt).Local(),
+			ProjectName: ts.ProjectName,
+			CostUSD:     ts.CostUSD,
+			Prompts:     ts.Prompts,
+			Live:        ts.Live,
+		}
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(component.SessionRow(t, rd, i == m.recentCursor, inner))
+	}
+	return component.Card(t, "recent sessions", b.String(), width)
+}
+
+func (m *Model) renderHelpBar(t *theme.Theme, width int) string {
+	hints := []component.KeyHint{
+		{Key: "↑↓", Desc: "nav"},
+		{Key: "⏎", Desc: "open"},
+		{Key: "s", Desc: "sessions"},
+		{Key: "r", Desc: "refresh"},
+		{Key: "?", Desc: "about"},
+		{Key: "q", Desc: "quit"},
+	}
+	return component.HelpBar(t, hints, width)
 }

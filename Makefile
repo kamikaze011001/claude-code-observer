@@ -3,8 +3,8 @@
 BIN_DIR := bin
 BIN := $(BIN_DIR)/claude-code-observer
 PKG := ./...
-LDFLAGS := -X main.version=$(shell git describe --tags --always --dirty 2>/dev/null || echo dev) \
-           -X main.commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo none)
+LDFLAGS = -X github.com/kamikaze011001/claude-code-observer/internal/version.Version=$(shell git describe --tags --always --dirty 2>/dev/null || echo dev) \
+          -X github.com/kamikaze011001/claude-code-observer/internal/version.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 
 build:
 	@mkdir -p $(BIN_DIR)

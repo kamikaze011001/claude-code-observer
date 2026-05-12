@@ -8,8 +8,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 )
+
+func TestMain(m *testing.M) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	// Pin local timezone to UTC so golden snapshots are machine-independent.
+	// The view layer uses .Local() for display; tests must agree on a locale.
+	if err := os.Setenv("TZ", "UTC"); err != nil {
+		panic("failed to set TZ=UTC for test determinism: " + err.Error())
+	}
+	time.Local = time.UTC
+	os.Exit(m.Run())
+}
 
 var update = flag.Bool("update", false, "update golden files")
 
@@ -43,53 +58,61 @@ func assertGolden(t *testing.T, name, got string) {
 	}
 }
 
-func TestView_Empty(t *testing.T) {
-	m := New(nil)
-	m.now = func() time.Time { return time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC) }
-	out := m.View(80, 24)
-	assertGolden(t, "empty", out)
+func buildTheme() *theme.Theme {
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	return &th
 }
 
-func TestView_Happy(t *testing.T) {
-	m := New(nil)
-	m.now = func() time.Time { return time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC) }
-	m.snap = readstore.Snapshot{
-		Today:         readstore.WindowStats{CostUSD: 4.21, Prompts: 37, Tools: 152, Errors: 2},
-		D7:            readstore.WindowStats{CostUSD: 28.40, Prompts: 214, Tools: 1100, Errors: 9},
-		D30:           readstore.WindowStats{CostUSD: 112.05, Prompts: 892, Tools: 4400, Errors: 41},
-		LatestEventTS: time.Date(2026, 5, 10, 11, 59, 0, 0, time.UTC).UnixNano(),
-	}
+func TestDashboardView_Golden(t *testing.T) {
+	fakeNow := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
 	startedAt := time.Date(2026, 5, 10, 9, 14, 0, 0, time.UTC).UnixNano()
-	m.top = []readstore.TopSession{
-		{SessionID: "s1", ProjectName: "observer", StartedAt: startedAt, CostUSD: 1.92, Prompts: 14, Live: true},
-	}
-	out := m.View(80, 24)
-	assertGolden(t, "happy", out)
-}
+	latestEventTS := time.Date(2026, 5, 10, 11, 59, 0, 0, time.UTC).UnixNano()
 
-func TestView_Stale(t *testing.T) {
-	m := New(nil)
-	m.now = func() time.Time { return time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC) }
-	m.snap = readstore.Snapshot{
-		Today:         readstore.WindowStats{CostUSD: 4.21, Prompts: 37, Tools: 152, Errors: 2},
-		D7:            readstore.WindowStats{CostUSD: 28.40, Prompts: 214, Tools: 1100, Errors: 9},
-		D30:           readstore.WindowStats{CostUSD: 112.05, Prompts: 892, Tools: 4400, Errors: 41},
-		LatestEventTS: time.Date(2026, 5, 10, 11, 59, 0, 0, time.UTC).UnixNano(),
+	cases := []struct {
+		name   string
+		model  func() *Model
+	}{
+		{
+			name: "populated",
+			model: func() *Model {
+				m := &Model{
+					theme: buildTheme(),
+					now:   func() time.Time { return fakeNow },
+					snap: readstore.Snapshot{
+						Today:     readstore.WindowStats{Sessions: 3, CostUSD: 4.21, Prompts: 37, Tokens: 12500, Tools: 152, Errors: 2},
+						Yesterday: readstore.WindowStats{Sessions: 2, CostUSD: 3.10, Prompts: 28, Tokens: 9800, Tools: 110, Errors: 0},
+						D7:        readstore.WindowStats{Sessions: 18, CostUSD: 28.40, Prompts: 214, Tokens: 87000, Tools: 1100, Errors: 9},
+						D30:       readstore.WindowStats{Sessions: 71, CostUSD: 112.05, Prompts: 892, Tokens: 340000, Tools: 4400, Errors: 41},
+						LatestEventTS: latestEventTS,
+					},
+					top: []readstore.TopSession{
+						{SessionID: "s1", ProjectName: "observer", StartedAt: startedAt, CostUSD: 1.92, Prompts: 14, Live: true},
+					},
+					recent: []readstore.TopSession{
+						{SessionID: "s2", ProjectName: "observer", StartedAt: startedAt, CostUSD: 0.80, Prompts: 8, Live: false},
+						{SessionID: "s3", ProjectName: "api-test", StartedAt: startedAt, CostUSD: 0.50, Prompts: 5, Live: false},
+					},
+					recentCursor: 0,
+				}
+				return m
+			},
+		},
+		{
+			name: "empty",
+			model: func() *Model {
+				return &Model{
+					theme: buildTheme(),
+					now:   func() time.Time { return fakeNow },
+				}
+			},
+		},
 	}
-	m.stale = true
-	out := m.View(80, 24)
-	assertGolden(t, "stale", out)
-}
 
-func TestView_Narrow(t *testing.T) {
-	m := New(nil)
-	m.now = func() time.Time { return time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC) }
-	m.snap = readstore.Snapshot{
-		Today:         readstore.WindowStats{CostUSD: 4.21, Prompts: 37, Tools: 152, Errors: 2},
-		D7:            readstore.WindowStats{CostUSD: 0.50, Prompts: 5, Tools: 20, Errors: 0},
-		D30:           readstore.WindowStats{CostUSD: 0.50, Prompts: 5, Tools: 20, Errors: 0},
-		LatestEventTS: time.Date(2026, 5, 10, 11, 59, 0, 0, time.UTC).UnixNano(),
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := tc.model()
+			out := m.View(90, 32)
+			assertGolden(t, tc.name, out)
+		})
 	}
-	out := m.View(40, 24) // narrow — blockW clamped to min 16
-	assertGolden(t, "narrow", out)
 }

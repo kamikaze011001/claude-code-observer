@@ -13,11 +13,12 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/prompt"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
 
 func TestDetail_KeyJK(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.events = []readstore.EventRow{
 		{TS: time.Now(), EventName: "tool_result"},
 		{TS: time.Now(), EventName: "user_prompt", PromptID: "p1"},
@@ -30,7 +31,7 @@ func TestDetail_KeyJK(t *testing.T) {
 
 func TestDetail_EnterOnPromptPushes(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.events = []readstore.EventRow{
 		{TS: time.Now(), EventName: "tool_result", PromptID: "p1"},
 		{TS: time.Now(), EventName: "user_prompt", PromptID: "p1"},
@@ -48,7 +49,7 @@ func TestDetail_EnterOnPromptPushes(t *testing.T) {
 
 func TestDetail_EnterOnNonPromptDoesNothing(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.events = []readstore.EventRow{
 		{TS: time.Now(), EventName: "tool_result"},
 	}
@@ -60,23 +61,24 @@ func TestDetail_EnterOnNonPromptDoesNothing(t *testing.T) {
 
 func TestDetail_StatusPill(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
-	if m.Status() != theme.PillNoDaemon {
+	m := NewDetail(nil, "s1", nil).(*Detail)
+	if m.Status() != component.StatusNoDaemon {
 		t.Fatal("empty status")
 	}
 	m.events = []readstore.EventRow{{}}
-	if m.Status() != theme.PillLive {
+	m.lastOK = time.Now()
+	if m.Status() != component.StatusLive {
 		t.Fatal("with events")
 	}
 	m.stale = true
-	if m.Status() != theme.PillStale {
+	if m.Status() != component.StatusStale {
 		t.Fatal("stale")
 	}
 }
 
 func TestDetail_Title(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "abcdef123456").(*Detail)
+	m := NewDetail(nil, "abcdef123456", nil).(*Detail)
 	if m.Title() != "SESSION abcdef12…" {
 		t.Fatalf("title=%q", m.Title())
 	}
@@ -107,14 +109,14 @@ func goldenDetail(t *testing.T, name, got string) {
 
 func TestDetail_View_Empty(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "abcdef123456").(*Detail)
+	m := NewDetail(nil, "abcdef123456", nil).(*Detail)
 	out := m.View(80, 20)
 	goldenDetail(t, "detail_empty", out)
 }
 
 func TestDetail_View_Scrolled(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "abcdef123456").(*Detail)
+	m := NewDetail(nil, "abcdef123456", nil).(*Detail)
 	base := mustTime("2026-05-10T12:00:00Z")
 	for i := 0; i < 30; i++ {
 		m.events = append(m.events, readstore.EventRow{
@@ -132,7 +134,7 @@ func TestDetail_View_Scrolled(t *testing.T) {
 
 func TestDetail_View_Mixed(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "abcdef123456").(*Detail)
+	m := NewDetail(nil, "abcdef123456", nil).(*Detail)
 	m.events = []readstore.EventRow{
 		{TS: mustTime("2026-05-10T12:43:01Z"), EventName: "user_prompt", PromptID: "p1", Summary: "prompt: 142ch /commit"},
 		{TS: mustTime("2026-05-10T12:43:02Z"), EventName: "tool_result", Summary: "Read 12ms"},
@@ -147,7 +149,7 @@ func TestDetail_View_Mixed(t *testing.T) {
 
 func TestDetail_EnterPromptPushesPromptDetail(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.events = []readstore.EventRow{
 		{TS: time.Now(), EventName: "user_prompt", PromptID: "pX"},
 	}
@@ -167,7 +169,7 @@ func TestDetail_EnterPromptPushesPromptDetail(t *testing.T) {
 
 func TestDetail_ShortHelpAndInit(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	if len(m.ShortHelp()) == 0 {
 		t.Fatal("ShortHelp empty")
 	}
@@ -178,7 +180,7 @@ func TestDetail_ShortHelpAndInit(t *testing.T) {
 
 func TestDetail_FetchCmdNilPool(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	cmd := m.fetchCmd()
 	if cmd == nil {
 		t.Fatal("nil cmd")
@@ -190,7 +192,7 @@ func TestDetail_FetchCmdNilPool(t *testing.T) {
 
 func TestDetail_TickInFlightNoOp(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.inFlight = true
 	_, cmd := m.Update(app.TickMsg(time.Now()))
 	if cmd != nil {
@@ -200,7 +202,7 @@ func TestDetail_TickInFlightNoOp(t *testing.T) {
 
 func TestDetail_ErrMsgSetsStale(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.Update(app.ErrMsg{Err: errSentinel("boom")})
 	if !m.stale {
 		t.Fatal("expected stale")
@@ -209,7 +211,7 @@ func TestDetail_ErrMsgSetsStale(t *testing.T) {
 
 func TestDetail_PgDn_StepsCursorByViewport(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	for i := 0; i < 30; i++ {
 		m.events = append(m.events, readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
 	}
@@ -223,7 +225,7 @@ func TestDetail_PgDn_StepsCursorByViewport(t *testing.T) {
 
 func TestDetail_PgUp_StepsCursorByViewport(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	for i := 0; i < 30; i++ {
 		m.events = append(m.events, readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
 	}
@@ -237,7 +239,7 @@ func TestDetail_PgUp_StepsCursorByViewport(t *testing.T) {
 
 func TestDetail_PgDn_ClampsAtLastEventWhenNoMore(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	for i := 0; i < 5; i++ {
 		m.events = append(m.events, readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
 	}
@@ -255,7 +257,7 @@ func TestDetail_PgDn_ClampsAtLastEventWhenNoMore(t *testing.T) {
 
 func TestDetail_PgDn_AtBottomTriggersFetchOlder(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.events = []readstore.EventRow{
 		{TS: mustTime("2026-05-10T12:00:01Z"), EventName: "tool_result"},
 		{TS: mustTime("2026-05-10T12:00:00Z"), EventName: "tool_result"},
@@ -274,7 +276,7 @@ func TestDetail_PgDn_AtBottomTriggersFetchOlder(t *testing.T) {
 
 func TestDetail_PgDn_DoesNotDoubleFetchWhileLoading(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.events = []readstore.EventRow{
 		{TS: mustTime("2026-05-10T12:00:00Z"), EventName: "tool_result"},
 	}
@@ -290,7 +292,7 @@ func TestDetail_PgDn_DoesNotDoubleFetchWhileLoading(t *testing.T) {
 
 func TestDetail_DetailOlderMsg_AppendsAndClearsLoading(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.events = []readstore.EventRow{
 		{TS: mustTime("2026-05-10T12:00:01Z"), EventName: "a"},
 		{TS: mustTime("2026-05-10T12:00:00Z"), EventName: "b"},
@@ -328,7 +330,7 @@ func TestDetail_DetailOlderMsg_AppendsAndClearsLoading(t *testing.T) {
 
 func TestDetail_FetchOlderCmd_NilPoolReturnsErrMsg(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.events = []readstore.EventRow{
 		{TS: mustTime("2026-05-10T12:00:00Z"), EventName: "tool_result"},
 	}
@@ -343,7 +345,7 @@ func TestDetail_FetchOlderCmd_NilPoolReturnsErrMsg(t *testing.T) {
 
 func TestDetail_Tick_SuppressedWhenScrolled(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.events = []readstore.EventRow{{TS: time.Now(), EventName: "tool_result"}}
 	m.offset = 3
 	_, cmd := m.Update(app.TickMsg(time.Now()))
@@ -354,7 +356,7 @@ func TestDetail_Tick_SuppressedWhenScrolled(t *testing.T) {
 
 func TestDetail_Tick_SuppressedWhenPaginated(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	for i := 0; i < detailPageSize+1; i++ {
 		m.events = append(m.events, readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
 	}
@@ -366,7 +368,7 @@ func TestDetail_Tick_SuppressedWhenPaginated(t *testing.T) {
 
 func TestDetail_Tick_SuppressedWhileLoadingOlder(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.events = []readstore.EventRow{{TS: time.Now(), EventName: "tool_result"}}
 	m.loadingOlder = true
 	_, cmd := m.Update(app.TickMsg(time.Now()))
@@ -377,10 +379,32 @@ func TestDetail_Tick_SuppressedWhileLoadingOlder(t *testing.T) {
 
 func TestDetail_Tick_RunsAtTopWithOnePage(t *testing.T) {
 	t.Parallel()
-	m := NewDetail(nil, "s1").(*Detail)
+	m := NewDetail(nil, "s1", nil).(*Detail)
 	m.events = []readstore.EventRow{{TS: time.Now(), EventName: "tool_result"}}
 	_, cmd := m.Update(app.TickMsg(time.Now()))
 	if cmd == nil {
 		t.Fatal("expected fetch cmd at top with one page loaded")
 	}
+}
+
+func TestSessionDetailView_Golden(t *testing.T) {
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	base := time.Date(2026, 5, 11, 9, 14, 0, 0, time.UTC)
+	events := []readstore.EventRow{
+		{TS: base.Add(2 * time.Second), EventName: "session_lifecycle", Summary: "started"},
+		{TS: base.Add(8 * time.Second), EventName: "user_prompt", PromptID: "p1", Summary: `"refactor receiver pipeline"`},
+		{TS: base.Add(9 * time.Second), EventName: "api_request", Summary: "opus-4-7  $0.12 · 8k/3k"},
+		{TS: base.Add(11 * time.Second), EventName: "tool_decision", Summary: "Read · approved"},
+		{TS: base.Add(11 * time.Second), EventName: "tool_result", Summary: "Read ✓ 42ms"},
+	}
+	m := &Detail{theme: &th, sessionID: "a3f9c1b1-0000-0000-0000-000000000000", events: events}
+	got := m.View(90, 32)
+	goldenDetail(t, "detail_populated", got)
+}
+
+func TestSessionDetailView_Golden_Empty(t *testing.T) {
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	m := &Detail{theme: &th, sessionID: "a3f9c1b1-0000-0000-0000-000000000000"}
+	got := m.View(90, 32)
+	goldenDetail(t, "detail_golden_empty", got)
 }

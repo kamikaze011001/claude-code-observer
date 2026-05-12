@@ -2,12 +2,15 @@ package app
 
 import (
 	"errors"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
 
 // fakeView is a no-op View used for stack assertions.
@@ -22,10 +25,14 @@ func (v *fakeView) Update(m tea.Msg) (View, tea.Cmd) { v.lastMsg = m; return v, 
 func (v *fakeView) View(w, h int) string             { return v.title }
 func (v *fakeView) Title() string                    { return v.title }
 func (v *fakeView) ShortHelp() []key.Binding         { return nil }
-func (v *fakeView) Status() theme.PillState          { return theme.PillLive }
+func (v *fakeView) Status() component.Status { return component.StatusLive }
+
+// aboutFactoryStub returns a fakeView titled "ABOUT" so tests can assert
+// the help key pushes the right view without depending on internal/tui/about.
+func aboutFactoryStub() View { return &fakeView{title: "ABOUT"} }
 
 func newAppWith(views ...View) *App {
-	a := New(theme.Default())
+	a := New(theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs()), aboutFactoryStub)
 	for _, v := range views {
 		a.Push(v)
 	}
@@ -115,3 +122,33 @@ func TestApp_ConsecErrsResetOnSuccess(t *testing.T) {
 		t.Fatalf("non-Err forward should reset, got %d", a.ConsecutiveErrors())
 	}
 }
+
+func TestApp_HelpKeyPushesAboutView(t *testing.T) {
+	a := newAppWith(&fakeView{title: "A"})
+	_, _ = a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	if got := a.StackDepth(); got != 2 {
+		t.Fatalf("? should push the about view, depth=%d", got)
+	}
+	if top := a.Top(); top == nil || top.Title() != "ABOUT" {
+		var got string
+		if top != nil {
+			got = top.Title()
+		}
+		t.Fatalf("top view title = %q, want %q", got, "ABOUT")
+	}
+}
+
+func TestApp_RenderChrome_ContainsStyledWordmark(t *testing.T) {
+	a := newAppWith(&fakeView{title: "X"})
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	out := stripANSIApp(a.View())
+	for _, want := range []string{"✦", "CCO", "│", "X"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("chrome missing %q:\n%s", want, out)
+		}
+	}
+}
+
+var ansiREApp = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSIApp(s string) string { return ansiREApp.ReplaceAllString(s, "") }

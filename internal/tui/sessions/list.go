@@ -9,20 +9,19 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
 
 const (
 	listFetchTimeout = 500 * time.Millisecond
 	listPageSize     = 50
 )
-
-// defaultTheme is memoized to avoid allocating a new theme on every frame.
-var defaultTheme = theme.Default()
 
 var errNoPool = errors.New("sessions: no read pool")
 
@@ -36,6 +35,7 @@ type listDataMsg struct {
 // List is the sessions list view model.
 type List struct {
 	pool     *sql.DB
+	theme    *theme.Theme
 	rows     []readstore.SessionRow
 	cursor   int
 	pageCur  *int64
@@ -64,8 +64,10 @@ func defaultListKeys() listKeys {
 	}
 }
 
-// NewList constructs a List bound to the given read pool.
-func NewList(pool *sql.DB) *List { return &List{pool: pool, keys: defaultListKeys()} }
+// NewList constructs a List bound to the given read pool and theme.
+func NewList(pool *sql.DB, th *theme.Theme) *List {
+	return &List{pool: pool, theme: th, keys: defaultListKeys()}
+}
 
 // Init runs once when the view is pushed; starts the first fetch.
 func (m *List) Init() tea.Cmd {
@@ -84,20 +86,20 @@ func (m *List) ShortHelp() []key.Binding {
 		m.keys.Enter,
 		m.keys.PgDn,
 		key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "back")),
-		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "about")),
 		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 	}
 }
 
-// Status reports the current pill state for the footer.
-func (m *List) Status() theme.PillState {
+// Status reports the current connection state for the footer pill.
+func (m *List) Status() component.Status {
 	if m.lastOK.IsZero() && len(m.rows) == 0 {
-		return theme.PillNoDaemon
+		return component.StatusNoDaemon
 	}
 	if m.stale {
-		return theme.PillStale
+		return component.StatusStale
 	}
-	return theme.PillLive
+	return component.StatusLive
 }
 
 // Update consumes a tea.Msg and returns an updated copy of itself plus any
@@ -168,8 +170,9 @@ func (m *List) Update(msg tea.Msg) (app.View, tea.Cmd) {
 			}
 			id := m.rows[m.cursor].SessionID
 			pool := m.pool
+			th := m.theme
 			return m, func() tea.Msg {
-				return app.PushViewMsg{V: NewDetail(pool, id)}
+				return app.PushViewMsg{V: NewDetail(pool, id, th)}
 			}
 		}
 	}
@@ -178,75 +181,104 @@ func (m *List) Update(msg tea.Msg) (app.View, tea.Cmd) {
 
 // View renders the sessions list.
 func (m *List) View(width, height int) string {
-	var b strings.Builder
-	b.WriteString(defaultTheme.Heading.Render("SESSIONS"))
-	b.WriteString("    page ")
-	b.WriteString(fmt.Sprintf("%d", len(m.prevCurs)+1))
-	b.WriteString("\n\n")
+	th := m.theme
+	if th == nil {
+		d := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+		th = &d
+	}
+	if width <= 0 {
+		width = 90
+	}
 
+	// Header: brand · sessions · page · pill
+	brand := th.Title.Render(th.Glyphs.Brand + " cco")
+	bread := th.Muted.Render(fmt.Sprintf(" · sessions    page %d", len(m.prevCurs)+1))
+	pill := component.StatusPill(th, m.Status())
+	headerRight := lipgloss.NewStyle().Width(width - lipgloss.Width(brand) - lipgloss.Width(bread)).Align(lipgloss.Right).Render(pill)
+	header := lipgloss.JoinHorizontal(lipgloss.Top, brand, bread, headerRight)
+
+	// Body card
 	if len(m.rows) == 0 {
-		b.WriteString(defaultTheme.MutedText.Render("no sessions yet — start using Claude Code with cco serve running"))
-		return b.String()
+		body := th.Muted.Render("no sessions yet — start using Claude Code with cco serve running")
+		card := component.Card(th, "", body, width)
+		help := component.HelpBar(th, m.helpHints(), width)
+		return strings.Join([]string{header, "", card, "", help}, "\n")
 	}
 
-	const projW = 20
-	header := fmt.Sprintf("  %-3s %-16s %-*s %-9s %-7s %-7s %s",
-		"#", "STARTED", projW, "PROJECT", "DURATION", "COST", "PROMPTS", "STATUS")
-	b.WriteString(defaultTheme.MutedText.Render(header))
-	b.WriteString("\n")
-
+	// Column header strip + rows
+	// inner = width - 6: border (2) + padding (4) consumed by Card.
+	inner := width - 6
+	if inner < 8 {
+		inner = 8
+	}
+	columnHeader := th.Muted.Render(formatColHeader(inner))
+	rows := []string{columnHeader}
 	for i, r := range m.rows {
-		project := r.ProjectName
-		if project == "" {
-			project = "(unlabeled)"
+		rd := component.SessionRowData{
+			Index:       i + 1,
+			Started:     r.StartedAt,
+			ProjectName: defaultProject(r.ProjectName),
+			DurationSec: r.DurationSec,
+			CostUSD:     r.CostUSD,
+			Prompts:     r.Prompts,
+			Tokens:      r.Tokens,
+			Live:        r.Live,
 		}
-		row := fmt.Sprintf("%-3d %-16s %-*s %-9s $%-6.2f %-7d %s",
-			i+1,
-			r.StartedAt.Format("2006-01-02 15:04"),
-			projW, truncRunesView(project, projW),
-			humanDuration(r.DurationSec),
-			r.CostUSD,
-			r.Prompts,
-			liveBadge(r.Live),
-		)
-		if i == m.cursor {
-			row = defaultTheme.AccentText.Render("▶ " + row)
-		} else {
-			row = "  " + row
-		}
-		b.WriteString(row)
-		b.WriteString("\n")
+		rows = append(rows, component.SessionRow(th, rd, i == m.cursor, inner))
 	}
+	body := strings.Join(rows, "\n")
+	card := component.Card(th, "", body, width)
+
+	help := component.HelpBar(th, m.helpHints(), width)
+	parts := []string{header, "", card}
 	if m.nextCur != nil {
-		b.WriteString("\n")
-		b.WriteString(defaultTheme.MutedText.Render("press pgdn for next page"))
+		parts = append(parts, th.Muted.Render("press pgdn for next page"))
 	}
-	return b.String()
+	parts = append(parts, "", help)
+	return strings.Join(parts, "\n")
 }
 
-func liveBadge(live bool) string {
-	if !live {
-		return ""
+func (m *List) helpHints() []component.KeyHint {
+	return []component.KeyHint{
+		{Key: "↑↓", Desc: "nav"}, {Key: "⏎", Desc: "open"}, {Key: "pgdn", Desc: "next"}, {Key: "pgup", Desc: "prev"},
+		{Key: "g/G", Desc: "top/bot"}, {Key: "b", Desc: "back"}, {Key: "?", Desc: "about"}, {Key: "q", Desc: "quit"},
 	}
-	return defaultTheme.Pill(theme.PillLive)
 }
 
-func humanDuration(sec int64) string {
-	if sec < 60 {
-		return fmt.Sprintf("%ds", sec)
+func defaultProject(s string) string {
+	if s == "" {
+		return "(unlabeled)"
 	}
-	if sec < 3600 {
-		return fmt.Sprintf("%dm%02ds", sec/60, sec%60)
-	}
-	return fmt.Sprintf("%dh%02dm", sec/3600, (sec%3600)/60)
+	return s
 }
 
-func truncRunesView(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
+func formatColHeader(w int) string {
+	// Column widths must match SessionRow constants exactly.
+	// SessionRow uses: idxW=4 startW=18 durW=10 costW=8 prW=8 tokW=7 liveW=8 gutterCount=7
+	const (
+		idxW  = 4
+		startW = 18
+		durW  = 10
+		costW = 8
+		prW   = 8
+		tokW  = 7
+		liveW = 8
+		gutterCount = 7
+	)
+	projW := w - idxW - startW - durW - costW - prW - tokW - liveW - gutterCount
+	if projW < 4 {
+		projW = 4
 	}
-	return string(r[:n-1]) + "…"
+	return fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s",
+		idxW, "#",
+		startW, "started",
+		projW, "project",
+		durW, "duration",
+		costW, "cost",
+		prW, "prompts",
+		tokW, "tokens",
+		liveW, "status",
+	)
 }
 
 func (m *List) fetchCmd(cursor *int64) tea.Cmd {
@@ -282,3 +314,22 @@ func samePtr(a, b *int64) bool {
 		return *a == *b
 	}
 }
+
+func humanDuration(sec int64) string {
+	if sec < 60 {
+		return fmt.Sprintf("%ds", sec)
+	}
+	if sec < 3600 {
+		return fmt.Sprintf("%dm%02ds", sec/60, sec%60)
+	}
+	return fmt.Sprintf("%dh%02dm", sec/3600, (sec%3600)/60)
+}
+
+func truncRunesView(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
+}
+

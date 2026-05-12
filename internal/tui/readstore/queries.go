@@ -21,6 +21,7 @@ type SessionRow struct {
 	DurationSec int64
 	CostUSD     float64
 	Prompts     int64
+	Tokens      int64
 	Live        bool
 }
 
@@ -38,7 +39,9 @@ SELECT session_id,
        last_seen_at,
        ended_at,
        cost_usd,
-       prompts
+       prompts,
+       -- total_tokens = input + output + cache_read + cache_creation (all four columns summed)
+       input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens AS tokens
 FROM sessions
 WHERE (? IS NULL OR started_at < ?)
 ORDER BY started_at DESC
@@ -61,13 +64,13 @@ LIMIT ?`
 			lastSeen int64
 			ended    sql.NullInt64
 		)
-		if err := rows.Scan(&r.SessionID, &r.ProjectName, &started, &lastSeen, &ended, &r.CostUSD, &r.Prompts); err != nil {
+		if err := rows.Scan(&r.SessionID, &r.ProjectName, &started, &lastSeen, &ended, &r.CostUSD, &r.Prompts, &r.Tokens); err != nil {
 			return nil, nil, fmt.Errorf("sessions page scan: %w", err)
 		}
-		r.StartedAt = time.Unix(0, started).UTC()
-		r.LastSeenAt = time.Unix(0, lastSeen).UTC()
+		r.StartedAt = time.Unix(0, started).Local()
+		r.LastSeenAt = time.Unix(0, lastSeen).Local()
 		if ended.Valid {
-			r.EndedAt = time.Unix(0, ended.Int64).UTC()
+			r.EndedAt = time.Unix(0, ended.Int64).Local()
 			r.DurationSec = (ended.Int64 - started) / int64(time.Second)
 		} else {
 			r.Live = true
@@ -88,15 +91,18 @@ LIMIT ?`
 
 // WindowStats is the rollup over a single time window.
 type WindowStats struct {
-	CostUSD float64
-	Prompts int64
-	Tools   int64
-	Errors  int64
+	Sessions int64
+	CostUSD  float64
+	Prompts  int64
+	Tokens   int64
+	Tools    int64
+	Errors   int64
 }
 
 // Snapshot is the dashboard's three-window rollup.
 type Snapshot struct {
 	Today         WindowStats
+	Yesterday     WindowStats
 	D7            WindowStats
 	D30           WindowStats
 	LatestEventTS int64
@@ -115,41 +121,77 @@ type TopSession struct {
 // DashboardSnapshot returns the three-window rollup plus the top-3 most
 // expensive sessions started today (UTC). now is injected for testability.
 func DashboardSnapshot(ctx context.Context, db *sql.DB, now time.Time) (Snapshot, []TopSession, error) {
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	today := startOfDay.UnixNano()
 	d7 := startOfDay.Add(-7 * 24 * time.Hour).UnixNano()
 	d30 := startOfDay.Add(-30 * 24 * time.Hour).UnixNano()
 
 	const q = `
 SELECT
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd     END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts      END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls   END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors   END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd     END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts      END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls   END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors   END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd     END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts      END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls   END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors   END), 0)
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN 1                                                                                    END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd                                                                             END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts                                                                              END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens             END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN 1                                                                                    END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd                                                                             END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts                                                                              END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens             END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN 1                                                                                    END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd                                                                             END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts                                                                              END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens             END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors                                                                           END), 0)
 FROM sessions
 WHERE started_at >= ?`
 
 	var s Snapshot
 	err := db.QueryRowContext(ctx, q,
-		today, today, today, today,
-		d7, d7, d7, d7,
-		d30, d30, d30, d30,
+		today, today, today, today, today, today,
+		d7, d7, d7, d7, d7, d7,
+		d30, d30, d30, d30, d30, d30,
 		d30,
 	).Scan(
-		&s.Today.CostUSD, &s.Today.Prompts, &s.Today.Tools, &s.Today.Errors,
-		&s.D7.CostUSD, &s.D7.Prompts, &s.D7.Tools, &s.D7.Errors,
-		&s.D30.CostUSD, &s.D30.Prompts, &s.D30.Tools, &s.D30.Errors,
+		&s.Today.Sessions, &s.Today.CostUSD, &s.Today.Prompts, &s.Today.Tokens, &s.Today.Tools, &s.Today.Errors,
+		&s.D7.Sessions, &s.D7.CostUSD, &s.D7.Prompts, &s.D7.Tokens, &s.D7.Tools, &s.D7.Errors,
+		&s.D30.Sessions, &s.D30.CostUSD, &s.D30.Prompts, &s.D30.Tokens, &s.D30.Tools, &s.D30.Errors,
 	)
 	if err != nil {
 		return Snapshot{}, nil, fmt.Errorf("snapshot query: %w", err)
+	}
+
+	// The yesterday window is queried separately because it has a different
+	// lower AND upper bound (the main query's three windows share `WHERE started_at >= d30`).
+	// Merging would require a UNION ALL or a CASE chain across mismatched ranges and
+	// hurt readability more than it would save round-trips.
+	yStart := startOfDay.Add(-24 * time.Hour).UnixNano()
+	yEnd := today
+	const yQ = `
+WITH y AS (
+  SELECT cost_usd, prompts, tool_calls, api_errors,
+         input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens
+  FROM sessions
+  WHERE started_at >= ? AND started_at < ?
+)
+SELECT
+  COALESCE(COUNT(*), 0),
+  COALESCE(SUM(cost_usd), 0),
+  COALESCE(SUM(prompts), 0),
+  COALESCE(SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens), 0),
+  COALESCE(SUM(tool_calls), 0),
+  COALESCE(SUM(api_errors), 0)
+FROM y`
+	if err := db.QueryRowContext(ctx, yQ,
+		yStart, yEnd,
+	).Scan(
+		&s.Yesterday.Sessions, &s.Yesterday.CostUSD, &s.Yesterday.Prompts,
+		&s.Yesterday.Tokens, &s.Yesterday.Tools, &s.Yesterday.Errors,
+	); err != nil {
+		return Snapshot{}, nil, fmt.Errorf("yesterday snapshot: %w", err)
 	}
 
 	var ts sql.NullInt64
@@ -186,6 +228,41 @@ LIMIT 3`
 		return Snapshot{}, nil, fmt.Errorf("top sessions iter: %w", err)
 	}
 	return s, top, nil
+}
+
+// RecentSessionsToday returns up to limit sessions started since the start of
+// the UTC day containing now, newest-first. The shape is the same as
+// TopSession so the dashboard can reuse the same row renderer.
+func RecentSessionsToday(ctx context.Context, db *sql.DB, now time.Time, limit int) ([]TopSession, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).UnixNano()
+	const q = `
+SELECT session_id, COALESCE(project_name, ''), started_at, cost_usd, prompts, ended_at IS NULL
+FROM sessions
+WHERE started_at >= ?
+ORDER BY started_at DESC
+LIMIT ?`
+	rows, err := db.QueryContext(ctx, q, startOfDay, limit)
+	if err != nil {
+		return nil, fmt.Errorf("recent sessions query: %w", err)
+	}
+	defer rows.Close()
+	var out []TopSession
+	for rows.Next() {
+		var r TopSession
+		var live int
+		if err := rows.Scan(&r.SessionID, &r.ProjectName, &r.StartedAt, &r.CostUSD, &r.Prompts, &live); err != nil {
+			return nil, fmt.Errorf("recent session scan: %w", err)
+		}
+		r.Live = live == 1
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("recent sessions iter: %w", err)
+	}
+	return out, nil
 }
 
 // EventRow is a row in the Session Detail timeline. Summary is derived from
@@ -231,7 +308,7 @@ LIMIT ?`
 		if err := rows.Scan(&ts, &r.EventName, &r.PromptID, &attrs); err != nil {
 			return nil, false, fmt.Errorf("session events scan: %w", err)
 		}
-		r.TS = time.Unix(0, ts).UTC()
+		r.TS = time.Unix(0, ts).Local()
 		r.Summary = summarize(r.EventName, attrs)
 		out = append(out, r)
 	}
@@ -315,9 +392,9 @@ FROM prompts WHERE prompt_id = ?`
 	if err != nil {
 		return PromptDetailResult{}, fmt.Errorf("prompt detail: %w", err)
 	}
-	p.StartedAt = time.Unix(0, started).UTC()
+	p.StartedAt = time.Unix(0, started).Local()
 	if ended.Valid {
-		p.EndedAt = time.Unix(0, ended.Int64).UTC()
+		p.EndedAt = time.Unix(0, ended.Int64).Local()
 	}
 	p.HadError = hadErr == 1
 
@@ -341,7 +418,7 @@ ORDER BY ts`, promptID)
 		if err := evRows.Scan(&ts, &eventName, &attrs); err != nil {
 			return PromptDetailResult{}, fmt.Errorf("prompt event scan: %w", err)
 		}
-		ev := time.Unix(0, ts).UTC()
+		ev := time.Unix(0, ts).Local()
 		var a map[string]any
 		_ = json.Unmarshal(attrs, &a)
 		switch eventName {

@@ -6,26 +6,44 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
+
+// AboutFactory builds the about view. Passed in at construction so the app
+// package does not need to import internal/tui/about (which already imports
+// this package for the View interface).
+type AboutFactory func() View
 
 // App is the Bubble Tea root model. It owns the view stack, the global
 // keymap, the theme, and per-tick error accounting.
 type App struct {
-	stack      []View
-	theme      theme.Theme
-	keys       GlobalKeys
-	width      int
-	height     int
-	lastErr    error
-	consecErrs int
+	stack        []View
+	theme        theme.Theme
+	keys         GlobalKeys
+	width        int
+	height       int
+	lastErr      error
+	consecErrs   int
+	aboutFactory AboutFactory
 }
 
 // New constructs an App with no views. Push at least one before running.
-func New(th theme.Theme) *App {
-	return &App{theme: th, keys: DefaultKeys()}
+// aboutFactory builds the about view shown on `?`; pass a closure that
+// imports internal/tui/about (constructing it via about.New(...)).
+func New(th theme.Theme, aboutFactory AboutFactory) *App {
+	return &App{theme: th, keys: DefaultKeys(), aboutFactory: aboutFactory}
+}
+
+// Top returns the top of the view stack, or nil when empty. Exposed for tests.
+func (a *App) Top() View {
+	if len(a.stack) == 0 {
+		return nil
+	}
+	return a.stack[len(a.stack)-1]
 }
 
 // Push adds a view to the top of the stack and calls its Init.
@@ -69,6 +87,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.stack = a.stack[:len(a.stack)-1]
 			}
 			return a, nil
+		case key.Matches(m, a.keys.Help):
+			if a.aboutFactory != nil {
+				a.Push(a.aboutFactory())
+			}
+			return a, nil
 		case key.Matches(m, a.keys.Refresh):
 			return a.forwardTop(TickMsg(time.Now()))
 		}
@@ -104,15 +127,19 @@ func (a *App) View() string {
 func (a *App) safeRender(v View) (out string) {
 	defer func() {
 		if r := recover(); r != nil {
-			out = a.theme.ErrorText.Render("⚠ VIEW ERROR — b TO RETURN")
+			out = lipgloss.NewStyle().Foreground(a.theme.Palette.Red).Bold(true).Render("⚠ VIEW ERROR — b TO RETURN")
 		}
 	}()
 	return v.View(a.width, a.height)
 }
 
 func (a *App) renderChrome(v View, body string) string {
-	title := a.theme.Heading.Render("CCO  │  " + v.Title())
-	pill := a.theme.Pill(v.Status())
+	brand := a.theme.Accent.Render(a.theme.Glyphs.Brand) + " " + a.theme.Title.Render("CCO")
+	sep := a.theme.Muted.Render("  │  ")
+	crumb := a.theme.Subtitle.Render(v.Title())
+	title := brand + sep + crumb
+
+	pill := component.StatusPill(&a.theme, v.Status())
 	helps := []string{}
 	for _, k := range v.ShortHelp() {
 		h := k.Help()
