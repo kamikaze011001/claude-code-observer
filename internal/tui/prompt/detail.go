@@ -158,7 +158,7 @@ func (d *Detail) View(width, height int) string {
 	// 3 summary cards
 	// cardW = outer width of each card (including borders).
 	// Card inner content width = cardW - 2 (borders) - 4 (padding) = cardW - 6.
-	cardW := (width - 4) / 3
+	cardW := (width - 2) / 3
 	cardContent := cardW - 6
 	if cardContent < 8 {
 		cardContent = 8
