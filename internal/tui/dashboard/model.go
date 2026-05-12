@@ -115,7 +115,7 @@ func (m *Model) ShortHelp() []key.Binding {
 	return []key.Binding{
 		key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sessions")),
 		key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
-		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "about")),
 		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 	}
 }

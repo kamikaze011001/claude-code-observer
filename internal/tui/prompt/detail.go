@@ -69,6 +69,7 @@ func (d *Detail) ShortHelp() []key.Binding {
 	return []key.Binding{
 		key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "back")),
 		key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
+		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "about")),
 		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 	}
 }
@@ -203,6 +204,7 @@ func (d *Detail) View(width, height int) string {
 	help := component.HelpBar(th, []component.KeyHint{
 		{Key: "b", Desc: "back"},
 		{Key: "r", Desc: "refresh"},
+		{Key: "?", Desc: "about"},
 		{Key: "q", Desc: "quit"},
 	}, width)
 	return strings.Join([]string{header, "", info, "", summaryRow, "", apiCard, "", tcCard, "", help}, "\n")

@@ -199,7 +199,7 @@ func (m *Model) renderHelpBar(t *theme.Theme, width int) string {
 		{Key: "⏎", Desc: "open"},
 		{Key: "s", Desc: "sessions"},
 		{Key: "r", Desc: "refresh"},
-		{Key: "?", Desc: "help"},
+		{Key: "?", Desc: "about"},
 		{Key: "q", Desc: "quit"},
 	}
 	return component.HelpBar(t, hints, width)

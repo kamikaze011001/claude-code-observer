@@ -86,7 +86,7 @@ func (m *List) ShortHelp() []key.Binding {
 		m.keys.Enter,
 		m.keys.PgDn,
 		key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "back")),
-		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "about")),
 		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 	}
 }
@@ -241,7 +241,7 @@ func (m *List) View(width, height int) string {
 func (m *List) helpHints() []component.KeyHint {
 	return []component.KeyHint{
 		{Key: "↑↓", Desc: "nav"}, {Key: "⏎", Desc: "open"}, {Key: "pgdn", Desc: "next"}, {Key: "pgup", Desc: "prev"},
-		{Key: "g/G", Desc: "top/bot"}, {Key: "b", Desc: "back"}, {Key: "?", Desc: "help"}, {Key: "q", Desc: "quit"},
+		{Key: "g/G", Desc: "top/bot"}, {Key: "b", Desc: "back"}, {Key: "?", Desc: "about"}, {Key: "q", Desc: "quit"},
 	}
 }
 

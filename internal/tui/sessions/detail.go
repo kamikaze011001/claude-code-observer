@@ -86,6 +86,7 @@ func (m *Detail) ShortHelp() []key.Binding {
 		m.keys.PgDn,
 		m.keys.Enter,
 		key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "back")),
+		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "about")),
 		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 	}
 }
@@ -268,7 +269,7 @@ func (m *Detail) helpHints() []component.KeyHint {
 		{Key: "⏎", Desc: "open prompt"},
 		{Key: "pgup/pgdn", Desc: "scroll"},
 		{Key: "b", Desc: "back"},
-		{Key: "?", Desc: "help"},
+		{Key: "?", Desc: "about"},
 		{Key: "q", Desc: "quit"},
 	}
 }
