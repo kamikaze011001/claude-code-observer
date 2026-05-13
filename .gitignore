@@ -20,3 +20,4 @@ coverage.txt
 # Claude Code / agent config (local)
 .claude/
 .agents/
+.superpowers/
