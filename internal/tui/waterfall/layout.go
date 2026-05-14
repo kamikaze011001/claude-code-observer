@@ -1,6 +1,7 @@
 package waterfall
 
 import (
+	"sort"
 	"time"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
@@ -83,4 +84,65 @@ func bucketLane(querySource string) LaneKind {
 	default:
 		return LaneSubagent
 	}
+}
+
+// endMS returns the bar's end offset (start offset + duration).
+func (b Bar) endMS() int64 { return b.OffsetMS + b.Req.DurationMS }
+
+// packLane greedily packs bars into non-overlapping sub-rows. Bars are sorted
+// by start offset; each bar is placed in the first sub-row whose last bar ends
+// at or before this bar's start, otherwise a new sub-row is opened.
+func packLane(bars []Bar) [][]Bar {
+	if len(bars) == 0 {
+		return nil
+	}
+	sorted := make([]Bar, len(bars))
+	copy(sorted, bars)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].OffsetMS < sorted[j].OffsetMS
+	})
+
+	var rows [][]Bar
+	rowEnd := []int64{} // last-bar end offset per row
+	for _, b := range sorted {
+		placed := false
+		for i := range rows {
+			if rowEnd[i] <= b.OffsetMS {
+				rows[i] = append(rows[i], b)
+				rowEnd[i] = b.endMS()
+				placed = true
+				break
+			}
+		}
+		if !placed {
+			rows = append(rows, []Bar{b})
+			rowEnd = append(rowEnd, b.endMS())
+		}
+	}
+	return rows
+}
+
+// scaleBar maps a bar's millisecond offset/duration onto terminal columns.
+// Width is clamped to a minimum of 1 column. When totalSpanMS is 0 the bar
+// renders as a single column at the start.
+func scaleBar(offsetMS, durationMS, totalSpanMS int64, contentWidth int) (startCol, width int) {
+	if totalSpanMS <= 0 || contentWidth <= 0 {
+		return 0, 1
+	}
+	scale := float64(contentWidth) / float64(totalSpanMS)
+	startCol = int(float64(offsetMS) * scale)
+	width = int(float64(durationMS) * scale)
+	if width < 1 {
+		width = 1
+	}
+	if startCol < 0 {
+		startCol = 0
+	}
+	if startCol+width > contentWidth {
+		width = contentWidth - startCol
+		if width < 1 {
+			width = 1
+		}
+	}
+	return startCol, width
 }

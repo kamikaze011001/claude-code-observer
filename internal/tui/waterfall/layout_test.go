@@ -93,3 +93,64 @@ func TestBuildBars_ZeroDurationClamped(t *testing.T) {
 		t.Errorf("span = %d, want 0", span)
 	}
 }
+
+func barAt(offset, dur int64) Bar {
+	return Bar{OffsetMS: offset, Req: readstore.WaterfallRequest{DurationMS: dur}}
+}
+
+func TestPackLane(t *testing.T) {
+	t.Parallel()
+	t.Run("no overlap stays one row", func(t *testing.T) {
+		rows := packLane([]Bar{barAt(0, 100), barAt(100, 100), barAt(200, 100)})
+		if len(rows) != 1 || len(rows[0]) != 3 {
+			t.Fatalf("want 1 row of 3, got %d rows", len(rows))
+		}
+	})
+	t.Run("full overlap splits into rows", func(t *testing.T) {
+		rows := packLane([]Bar{barAt(0, 1000), barAt(0, 1000), barAt(0, 1000)})
+		if len(rows) != 3 {
+			t.Fatalf("want 3 rows, got %d", len(rows))
+		}
+	})
+	t.Run("partial overlap packs greedily", func(t *testing.T) {
+		// A:[0,500) B:[200,700) C:[600,900)
+		// A and C don't overlap -> same row; B -> second row.
+		rows := packLane([]Bar{barAt(0, 500), barAt(200, 500), barAt(600, 300)})
+		if len(rows) != 2 {
+			t.Fatalf("want 2 rows, got %d", len(rows))
+		}
+		if len(rows[0]) != 2 {
+			t.Fatalf("row 0 should hold A and C, got %d bars", len(rows[0]))
+		}
+	})
+	t.Run("empty input", func(t *testing.T) {
+		if rows := packLane(nil); rows != nil {
+			t.Fatalf("want nil, got %v", rows)
+		}
+	})
+}
+
+func TestScaleBar(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name                              string
+		offsetMS, durationMS, totalSpanMS int64
+		contentWidth                      int
+		wantStart, wantWidth              int
+	}{
+		{"half offset full width", 5000, 5000, 10000, 100, 50, 50},
+		{"min width clamp", 0, 1, 10000, 100, 0, 1},
+		{"zero span single col", 0, 0, 0, 100, 0, 1},
+		{"end of timeline", 9000, 1000, 10000, 100, 90, 10},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotStart, gotWidth := scaleBar(c.offsetMS, c.durationMS, c.totalSpanMS, c.contentWidth)
+			if gotStart != c.wantStart || gotWidth != c.wantWidth {
+				t.Errorf("scaleBar(%d,%d,%d,%d) = (%d,%d), want (%d,%d)",
+					c.offsetMS, c.durationMS, c.totalSpanMS, c.contentWidth,
+					gotStart, gotWidth, c.wantStart, c.wantWidth)
+			}
+		})
+	}
+}
