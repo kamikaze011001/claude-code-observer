@@ -21,8 +21,9 @@ func (l LaneKind) String() string {
 }
 
 // bucketLane maps a free-form query_source string (as seen on log events)
-// to one of the three fixed lanes. Empty / unknown values fall through to
-// the subagent lane, except the explicit main/auxiliary aliases.
+// to one of the three fixed lanes. The empty string and the explicit main
+// aliases map to the main lane; "auxiliary"/"compact" to the auxiliary lane;
+// every other value (including any subagent name) to the subagent lane.
 func bucketLane(querySource string) LaneKind {
 	switch querySource {
 	case "", "main", "repl_main_thread":
