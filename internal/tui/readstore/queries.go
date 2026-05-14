@@ -425,10 +425,12 @@ ORDER BY ts`, promptID)
 		case domain.EventToolResult:
 			tc := ToolCall{TS: ev}
 			tc.ToolName, _ = a["tool_name"].(string)
-			if v, ok := a["duration_ms"].(float64); ok {
-				tc.DurationMS = int64(v)
+			// tool_result emits duration_ms/success as quoted strings, not
+			// native JSON types — coerce both forms.
+			if v, ok := attrInt(a, "duration_ms"); ok {
+				tc.DurationMS = v
 			}
-			if v, ok := a["success"].(bool); ok {
+			if v, ok := attrBool(a, "success"); ok {
 				tc.Success = v
 			}
 			out.ToolCalls = append(out.ToolCalls, tc)

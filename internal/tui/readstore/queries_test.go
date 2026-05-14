@@ -361,9 +361,10 @@ func seedPrompt(t *testing.T, sessionID, promptID string, started int64, cost fl
 			t.Fatalf("api_request insert: %v", err)
 		}
 	}
+	// tool_result attrs use the quoted-string form Claude Code actually emits.
 	for i, attrs := range []string{
-		`{"tool_name":"Read","duration_ms":12,"success":true}`,
-		`{"tool_name":"Bash","duration_ms":1245,"success":false}`,
+		`{"tool_name":"Read","duration_ms":"12","success":"true"}`,
+		`{"tool_name":"Bash","duration_ms":"1245","success":"false"}`,
 	} {
 		_, err := repo.DB().Exec(`INSERT INTO events(ts, session_id, prompt_id, event_name, attrs) VALUES (?, ?, ?, 'tool_result', ?)`,
 			started+int64(i+3)*int64(time.Second), sessionID, promptID, attrs)
@@ -406,6 +407,12 @@ func TestPromptDetail_Found(t *testing.T) {
 	}
 	if pd.ToolCalls[1].Success {
 		t.Error("second tool_result was success=false")
+	}
+	if pd.ToolCalls[0].DurationMS != 12 || pd.ToolCalls[1].DurationMS != 1245 {
+		t.Errorf("tool_call durations = %d, %d; want 12, 1245", pd.ToolCalls[0].DurationMS, pd.ToolCalls[1].DurationMS)
+	}
+	if !pd.ToolCalls[0].Success {
+		t.Error("first tool_result was success=true")
 	}
 	if pd.APIRequests[0].Model != "claude-opus-4-7" {
 		t.Errorf("model=%q", pd.APIRequests[0].Model)
