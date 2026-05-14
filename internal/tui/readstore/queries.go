@@ -481,7 +481,7 @@ ORDER BY ts`, promptID)
 	}
 	defer rows.Close()
 
-	var out []WaterfallRequest
+	out := make([]WaterfallRequest, 0)
 	for rows.Next() {
 		var (
 			ts        int64
