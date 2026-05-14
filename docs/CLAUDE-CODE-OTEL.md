@@ -341,7 +341,7 @@ Fired after each successful call to the Claude API (after streaming completes).
 | `cost_usd` | float | Cost of this single API request in USD. |
 | `duration_ms` | int | Elapsed time from request start to stream-end in milliseconds. |
 | `request_id` | string | Anthropic API request ID from the response `request-id` header. Present only when the API returns one. |
-| `query_source` | string | Subsystem that issued the request: `main` (primary REPL loop), `subagent` (spawned subagent), or `auxiliary` (background tasks such as compaction). |
+| `query_source` | string | Free-form identifier of the subsystem that issued the request. Observed values on log records include `repl_main_thread` (primary REPL loop), `compact` (background compaction), and subagent names (e.g. `general-purpose`, `Explore`). **Note:** the categorical `main` / `subagent` / `auxiliary` form documented elsewhere is the *metrics* cardinality bucketing — log records carry the richer free-form value. Treat this field as a free-form string. |
 | `speed` | string | `fast` when the request used fast mode (extended thinking shortcut); absent otherwise. |
 | `effort` | string | Effort level applied when the model supports it: `low`, `medium`, `high`, `xhigh`, or `max`. Absent when the model does not support effort levels. |
 
@@ -359,7 +359,7 @@ attempts are **not** logged as separate events.
 | `duration_ms` | int | Total time spent across all retry attempts before giving up. |
 | `attempt` | int | Total number of attempts made (including the initial attempt and all retries). |
 | `request_id` | string | Anthropic API request ID, if the server returned one before failing. |
-| `query_source` | string | Same as `api_request`: `main`, `subagent`, or `auxiliary`. |
+| `query_source` | string | Same as `api_request` — a free-form subsystem identifier (`repl_main_thread`, `compact`, or a subagent name). See §8.2. |
 | `effort` | string | Effort level, if applicable. |
 
 ### 8.4 `tool_result`
@@ -588,7 +588,7 @@ export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://siem.internal:4318
 |-----------|--------|
 | Per-tool latency histograms | Not instrumented |
 | Time-to-first-token / inter-token latency | Not instrumented |
-| Subagent count as a distinct metric | Inferred from `query_source=subagent` on `api_request` |
+| Subagent count as a distinct metric | Inferred from `query_source` (subagent name values) on `api_request` log records |
 | Per-file diff sizes | `lines_of_code` carries `language` only; filenames in `tool_parameters` (with `OTEL_LOG_TOOL_DETAILS=1`) |
 | Streaming checkpoints | Not instrumented |
 | MCP server latency | Not instrumented |
