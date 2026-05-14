@@ -566,6 +566,89 @@ func TestSessionsPage_IncludesTokens(t *testing.T) {
 // for the timezone-display fix: a user in GMT+7 viewing the dashboard
 // at 02:00 local on 2026-05-12 must see events between
 // 2026-05-12T00:00+07:00 (= 2026-05-11T17:00Z) and now as "today".
+func TestPromptWaterfall_ParsesAndOrders(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	insertEvent := func(tsNano int64, name, attrs string) {
+		_, err := repo.DB().ExecContext(context.Background(),
+			`INSERT INTO events (ts, session_id, prompt_id, event_name, attrs)
+			 VALUES (?, ?, ?, ?, ?)`,
+			tsNano, "sess-1", "prompt-1", name, attrs)
+		if err != nil {
+			t.Fatalf("insert event: %v", err)
+		}
+	}
+
+	base := time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)
+	// Out-of-order inserts; query must return ts-ascending.
+	insertEvent(base.Add(5*time.Second).UnixNano(), "api_request",
+		`{"query_source":"subagent","duration_ms":2000,"model":"claude-sonnet-4-6","cost_usd":0.04,"input_tokens":1200,"output_tokens":800}`)
+	insertEvent(base.Add(1*time.Second).UnixNano(), "api_request",
+		`{"query_source":"repl_main_thread","duration_ms":900,"model":"claude-opus-4-7","cost_usd":0.21,"input_tokens":8000,"output_tokens":2000}`)
+	insertEvent(base.Add(7*time.Second).UnixNano(), "api_error",
+		`{"query_source":"subagent","duration_ms":1500,"model":"claude-sonnet-4-6","error":"overloaded"}`)
+	// Unrelated event must be ignored.
+	insertEvent(base.Add(2*time.Second).UnixNano(), "tool_result",
+		`{"tool_name":"Bash","duration_ms":100}`)
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	got, err := readstore.PromptWaterfall(context.Background(), pool, "prompt-1")
+	if err != nil {
+		t.Fatalf("PromptWaterfall: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("want 3 rows, got %d", len(got))
+	}
+	if got[0].QuerySource != "repl_main_thread" {
+		t.Fatalf("row 0 not ts-ascending: %+v", got[0])
+	}
+	if got[0].Model != "claude-opus-4-7" || got[0].DurationMS != 900 || got[0].CostUSD != 0.21 {
+		t.Fatalf("row 0 fields wrong: %+v", got[0])
+	}
+	if got[0].InputTokens != 8000 || got[0].OutputTokens != 2000 {
+		t.Fatalf("row 0 tokens wrong: %+v", got[0])
+	}
+	if got[1].QuerySource != "subagent" || got[1].IsError {
+		t.Fatalf("row 1 wrong: %+v", got[1])
+	}
+	if !got[2].IsError || got[2].QuerySource != "subagent" {
+		t.Fatalf("row 2 should be the api_error: %+v", got[2])
+	}
+}
+
+func TestPromptWaterfall_EmptyWhenNoRequests(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	got, err := readstore.PromptWaterfall(context.Background(), pool, "missing")
+	if err != nil {
+		t.Fatalf("PromptWaterfall: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("want empty slice, got %d rows", len(got))
+	}
+}
+
 func TestRecentSessionsToday_LocalMidnight(t *testing.T) {
 	home := t.TempDir()
 	repo, err := repository.Open(home)
