@@ -25,4 +25,4 @@ session a3f9c1b1… · started 09:15:42 · duration 32s · 2341 chars
 │  09:16:08 Read         ✓  31ms                                                         │
 ╰────────────────────────────────────────────────────────────────────────────────────────╯
 
-b back  r refresh  ? about  q quit                                                        
+w waterfall  b back  r refresh  ? about  q quit                                           

@@ -21,4 +21,4 @@ session sess-x · started 12:43:01 · duration 4s · 0 chars
 │  12:43:03 Bash         ✗  1245ms     failed                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 
-b back  r refresh  ? about  q quit                                                                  
+w waterfall  b back  r refresh  ? about  q quit                                                     

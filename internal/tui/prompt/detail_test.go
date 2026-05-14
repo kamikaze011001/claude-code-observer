@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/muesli/termenv"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
@@ -196,6 +197,23 @@ func TestDetail_View_NotFound(t *testing.T) {
 	d := New(nil, "abcdef123456", nil).(*Detail)
 	d.notFound = true
 	golden(t, "not_found", d.View(100, 30))
+}
+
+func TestDetail_WKeyPushesWaterfall(t *testing.T) {
+	t.Parallel()
+	d := New(nil, "abcdef123456", nil).(*Detail)
+	_, cmd := d.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	if cmd == nil {
+		t.Fatal("expected a command from 'w' key")
+	}
+	msg := cmd()
+	pv, ok := msg.(app.PushViewMsg)
+	if !ok {
+		t.Fatalf("expected app.PushViewMsg, got %T", msg)
+	}
+	if _, ok := pv.V.(app.View); !ok {
+		t.Fatal("pushed value is not an app.View")
+	}
 }
 
 var _ app.View = (*Detail)(nil)
