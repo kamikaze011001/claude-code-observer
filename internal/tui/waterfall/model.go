@@ -157,8 +157,3 @@ func shortID(id string) string {
 	return id
 }
 
-// View is a placeholder — Task 6 (view.go) will replace this with the real
-// rendering implementation. It exists here only so Model satisfies the
-// app.View interface in isolation.
-// TODO(task6): remove this method when view.go defines the real View().
-func (m *Model) View(width, height int) string { return "" }
