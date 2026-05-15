@@ -425,10 +425,12 @@ ORDER BY ts`, promptID)
 		case domain.EventToolResult:
 			tc := ToolCall{TS: ev}
 			tc.ToolName, _ = a["tool_name"].(string)
-			if v, ok := a["duration_ms"].(float64); ok {
-				tc.DurationMS = int64(v)
+			// tool_result emits duration_ms/success as quoted strings, not
+			// native JSON types — coerce both forms.
+			if v, ok := attrInt(a, "duration_ms"); ok {
+				tc.DurationMS = v
 			}
-			if v, ok := a["success"].(bool); ok {
+			if v, ok := attrBool(a, "success"); ok {
 				tc.Success = v
 			}
 			out.ToolCalls = append(out.ToolCalls, tc)
@@ -449,6 +451,72 @@ ORDER BY ts`, promptID)
 	}
 	if err := evRows.Err(); err != nil {
 		return PromptDetailResult{}, fmt.Errorf("prompt events iter: %w", err)
+	}
+	return out, nil
+}
+
+// WaterfallRequest is one api_request or api_error event under a prompt,
+// carrying the fields the waterfall view needs. TS is the event timestamp
+// (fired at stream-end); the request start is TS - DurationMS.
+type WaterfallRequest struct {
+	TS           time.Time
+	DurationMS   int64
+	QuerySource  string // raw, free-form (e.g. "repl_main_thread", "compact", a subagent name)
+	Model        string
+	CostUSD      float64
+	InputTokens  int64
+	OutputTokens int64
+	IsError      bool // true when the row came from an api_error event
+}
+
+// PromptWaterfall returns the api_request and api_error events for a prompt,
+// ordered ascending by ts. Returns an empty slice (not an error) when the
+// prompt has no such events.
+func PromptWaterfall(ctx context.Context, db *sql.DB, promptID string) ([]WaterfallRequest, error) {
+	rows, err := db.QueryContext(ctx, `
+SELECT ts, event_name, attrs
+FROM events
+WHERE prompt_id = ? AND event_name IN ('api_request','api_error')
+ORDER BY ts`, promptID)
+	if err != nil {
+		return nil, fmt.Errorf("prompt waterfall: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]WaterfallRequest, 0)
+	for rows.Next() {
+		var (
+			ts        int64
+			eventName string
+			attrs     []byte
+		)
+		if err := rows.Scan(&ts, &eventName, &attrs); err != nil {
+			return nil, fmt.Errorf("prompt waterfall scan: %w", err)
+		}
+		var a map[string]any
+		_ = json.Unmarshal(attrs, &a)
+		r := WaterfallRequest{
+			TS:      time.Unix(0, ts).Local(),
+			IsError: eventName == domain.EventAPIError,
+		}
+		r.QuerySource, _ = a["query_source"].(string)
+		r.Model, _ = a["model"].(string)
+		if v, ok := a["duration_ms"].(float64); ok {
+			r.DurationMS = int64(v)
+		}
+		if v, ok := a["cost_usd"].(float64); ok {
+			r.CostUSD = v
+		}
+		if v, ok := a["input_tokens"].(float64); ok {
+			r.InputTokens = int64(v)
+		}
+		if v, ok := a["output_tokens"].(float64); ok {
+			r.OutputTokens = int64(v)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("prompt waterfall iter: %w", err)
 	}
 	return out, nil
 }

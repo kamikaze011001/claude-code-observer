@@ -3,6 +3,7 @@ package readstore
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/domain"
 )
@@ -32,11 +33,11 @@ func summarize(eventName string, attrs []byte) string {
 	case domain.EventToolResult:
 		tool, _ := a["tool_name"].(string)
 		durStr := "?ms"
-		if d, ok := a["duration_ms"].(float64); ok {
-			durStr = fmt.Sprintf("%dms", int(d))
+		if d, ok := attrInt(a, "duration_ms"); ok {
+			durStr = fmt.Sprintf("%dms", d)
 		}
 		mark := ""
-		if ok, isBool := a["success"].(bool); isBool && !ok {
+		if ok, isBool := attrBool(a, "success"); isBool && !ok {
 			mark = " ✗"
 		}
 		return truncRunes(fmt.Sprintf("%s %s%s", tool, durStr, mark), maxSummaryRunes)
@@ -93,17 +94,64 @@ func summarize(eventName string, attrs []byte) string {
 		}
 		return truncRunes(fmt.Sprintf("api retries exhausted: %d", attempt), maxSummaryRunes)
 	case domain.EventHookExecutionStart:
-		hook, _ := a["hook"].(string)
-		return truncRunes("hook start: "+hook, maxSummaryRunes)
+		return truncRunes("hook start: "+hookLabel(a), maxSummaryRunes)
 	case domain.EventHookExecutionComplete:
-		hook, _ := a["hook"].(string)
 		dur := ""
-		if d, ok := a["duration_ms"].(float64); ok {
-			dur = fmt.Sprintf(" %dms", int(d))
+		if d, ok := attrInt(a, "total_duration_ms"); ok {
+			dur = fmt.Sprintf(" %dms", d)
 		}
-		return truncRunes("hook done: "+hook+dur, maxSummaryRunes)
+		return truncRunes("hook done: "+hookLabel(a)+dur, maxSummaryRunes)
 	default:
 		return truncRunes(eventName, maxSummaryRunes)
+	}
+}
+
+// hookLabel picks the most descriptive identifier from a hook_execution event.
+// Claude Code emits hook_name (e.g. "SessionStart:startup") and hook_event
+// (e.g. "SessionStart"); prefer hook_name, fall back to hook_event, then "?".
+func hookLabel(a map[string]any) string {
+	if s, ok := a["hook_name"].(string); ok && s != "" {
+		return s
+	}
+	if s, ok := a["hook_event"].(string); ok && s != "" {
+		return s
+	}
+	return "?"
+}
+
+// attrInt coerces a JSON attribute to int64. Claude Code emits some numeric
+// attributes (tool_result.duration_ms, hook total_duration_ms) as quoted
+// strings rather than JSON numbers, so accept both forms.
+func attrInt(a map[string]any, key string) (int64, bool) {
+	switch v := a[key].(type) {
+	case float64:
+		return int64(v), true
+	case string:
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	default:
+		return 0, false
+	}
+}
+
+// attrBool coerces a JSON attribute to bool, accepting both native booleans
+// and the quoted-string form ("true"/"false") that Claude Code emits on
+// tool_result records.
+func attrBool(a map[string]any, key string) (bool, bool) {
+	switch v := a[key].(type) {
+	case bool:
+		return v, true
+	case string:
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return false, false
+		}
+		return b, true
+	default:
+		return false, false
 	}
 }
 

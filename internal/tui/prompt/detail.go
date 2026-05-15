@@ -16,11 +16,14 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/waterfall"
 )
 
 const fetchTimeout = 500 * time.Millisecond
 
 var errNoPool = errors.New("prompt: no read pool")
+
+var newWaterfall = waterfall.New
 
 type detailDataMsg struct {
 	result readstore.PromptDetailResult
@@ -67,6 +70,7 @@ func (d *Detail) Title() string {
 
 func (d *Detail) ShortHelp() []key.Binding {
 	return []key.Binding{
+		key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "waterfall")),
 		key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "back")),
 		key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "about")),
@@ -106,6 +110,16 @@ func (d *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 			return d, nil
 		}
 		d.stale = true
+		return d, nil
+	case tea.KeyMsg:
+		if v.String() == "w" {
+			pool := d.pool
+			pid := d.promptID
+			th := d.theme
+			return d, func() tea.Msg {
+				return app.PushViewMsg{V: newWaterfall(pool, pid, th)}
+			}
+		}
 		return d, nil
 	}
 	return d, nil
@@ -202,6 +216,7 @@ func (d *Detail) View(width, height int) string {
 	}
 
 	help := component.HelpBar(th, []component.KeyHint{
+		{Key: "w", Desc: "waterfall"},
 		{Key: "b", Desc: "back"},
 		{Key: "r", Desc: "refresh"},
 		{Key: "?", Desc: "about"},

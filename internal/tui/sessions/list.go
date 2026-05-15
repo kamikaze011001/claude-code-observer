@@ -56,8 +56,8 @@ func defaultListKeys() listKeys {
 	return listKeys{
 		Up:     key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
 		Down:   key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-		PgUp:   key.NewBinding(key.WithKeys("pgup"), key.WithHelp("pgup", "prev page")),
-		PgDn:   key.NewBinding(key.WithKeys("pgdown"), key.WithHelp("pgdn", "next page")),
+		PgUp:   key.NewBinding(key.WithKeys("pgup", "u"), key.WithHelp("u", "prev page")),
+		PgDn:   key.NewBinding(key.WithKeys("pgdown", "d"), key.WithHelp("d", "next page")),
 		Top:    key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "top")),
 		Bottom: key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "bottom")),
 		Enter:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
@@ -232,7 +232,7 @@ func (m *List) View(width, height int) string {
 	help := component.HelpBar(th, m.helpHints(), width)
 	parts := []string{header, "", card}
 	if m.nextCur != nil {
-		parts = append(parts, th.Muted.Render("press pgdn for next page"))
+		parts = append(parts, th.Muted.Render("press d for next page"))
 	}
 	parts = append(parts, "", help)
 	return strings.Join(parts, "\n")
@@ -240,7 +240,7 @@ func (m *List) View(width, height int) string {
 
 func (m *List) helpHints() []component.KeyHint {
 	return []component.KeyHint{
-		{Key: "↑↓", Desc: "nav"}, {Key: "⏎", Desc: "open"}, {Key: "pgdn", Desc: "next"}, {Key: "pgup", Desc: "prev"},
+		{Key: "↑↓", Desc: "nav"}, {Key: "⏎", Desc: "open"}, {Key: "d", Desc: "next"}, {Key: "u", Desc: "prev"},
 		{Key: "g/G", Desc: "top/bot"}, {Key: "b", Desc: "back"}, {Key: "?", Desc: "about"}, {Key: "q", Desc: "quit"},
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -384,6 +385,38 @@ func TestDetail_Tick_RunsAtTopWithOnePage(t *testing.T) {
 	_, cmd := m.Update(app.TickMsg(time.Now()))
 	if cmd == nil {
 		t.Fatal("expected fetch cmd at top with one page loaded")
+	}
+}
+
+func TestDetail_View_NoBlankRowsBetweenEvents(t *testing.T) {
+	t.Parallel()
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	base := mustTime("2026-05-10T12:00:00Z")
+	m := &Detail{theme: &th, sessionID: "s1", lastOK: base}
+	m.events = []readstore.EventRow{
+		{TS: base, EventName: "session_lifecycle", Summary: "started"},
+		{TS: base.Add(time.Second), EventName: "user_prompt", PromptID: "p1", Summary: "prompt: 88ch"},
+		{TS: base.Add(2 * time.Second), EventName: "tool_result", Summary: "Read 12ms"},
+	}
+	m.cursor = 0 // first row selected; selected + prompt rows are background-styled
+	out := stripANSI(m.View(90, 32))
+
+	// Every card body line ("│ … │") must carry content. A border-only line
+	// with blank interior is a lipgloss wrap artifact from rows that overflow
+	// the card's content width.
+	var bodyRows int
+	for _, ln := range strings.Split(out, "\n") {
+		s := strings.TrimSpace(ln)
+		if !strings.HasPrefix(s, "│") || !strings.HasSuffix(s, "│") {
+			continue
+		}
+		bodyRows++
+		if strings.TrimSpace(strings.Trim(s, "│")) == "" {
+			t.Fatalf("blank card body line (wrap artifact):\n%s", out)
+		}
+	}
+	if bodyRows != 4 { // 1 header + 3 events
+		t.Fatalf("card body rows = %d; want 4\n%s", bodyRows, out)
 	}
 }
 

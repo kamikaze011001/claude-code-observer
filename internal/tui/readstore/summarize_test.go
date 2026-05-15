@@ -15,6 +15,8 @@ func TestSummarize(t *testing.T) {
 		{"user_prompt missing length", "user_prompt", `{}`, "prompt"},
 		{"tool_result success", "tool_result", `{"tool_name":"Read","duration_ms":12,"success":true}`, "Read 12ms"},
 		{"tool_result fail", "tool_result", `{"tool_name":"Bash","duration_ms":1245,"success":false}`, "Bash 1245ms ✗"},
+		{"tool_result string-typed attrs", "tool_result", `{"tool_name":"Bash","duration_ms":"459","success":"false"}`, "Bash 459ms ✗"},
+		{"tool_result string success true", "tool_result", `{"tool_name":"Read","duration_ms":"34","success":"true"}`, "Read 34ms"},
 		{"tool_decision", "tool_decision", `{"decision":"reject","tool_name":"Bash"}`, "reject Bash"},
 		{"api_request", "api_request", `{"model":"claude-opus-4-7","cost_usd":0.0021}`, "claude-opus-4-7 $0.0021"},
 		{"api_error with message", "api_error", `{"error":"timeout"}`, "error: timeout"},
@@ -34,8 +36,10 @@ func TestSummarize(t *testing.T) {
 		{"skill_activated", "skill_activated", `{"name":"brainstorm"}`, "skill: brainstorm"},
 		{"at_mention", "at_mention", `{"target":"file"}`, "@mention: file"},
 		{"retries_exhausted", "api_retries_exhausted", `{"attempt":4}`, "api retries exhausted: 4"},
-		{"hook_start", "hook_execution_start", `{"hook":"PreToolUse"}`, "hook start: PreToolUse"},
-		{"hook_complete", "hook_execution_complete", `{"hook":"PreToolUse","duration_ms":12}`, "hook done: PreToolUse 12ms"},
+		{"hook_start", "hook_execution_start", `{"hook_name":"SessionStart:startup","hook_event":"SessionStart"}`, "hook start: SessionStart:startup"},
+		{"hook_complete", "hook_execution_complete", `{"hook_name":"Stop","total_duration_ms":"9"}`, "hook done: Stop 9ms"},
+		{"hook_complete falls back to hook_event", "hook_execution_complete", `{"hook_event":"PreToolUse","total_duration_ms":"12"}`, "hook done: PreToolUse 12ms"},
+		{"hook_start missing name", "hook_execution_start", `{}`, "hook start: ?"},
 	}
 	for _, c := range cases {
 		c := c

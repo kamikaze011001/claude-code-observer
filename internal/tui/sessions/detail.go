@@ -242,7 +242,10 @@ func (m *Detail) View(width, height int) string {
 			Time: e.TS, EventName: e.EventName, Summary: e.Summary,
 			IsPrompt: e.EventName == domain.EventUserPrompt && e.PromptID != "",
 		}
-		rows = append(rows, component.EventRow(th, rd, i == m.cursor, width-4))
+		// width-6: card outer = width, minus 2 border + 4 padding = content area.
+		// Rows wider than the content area get wrap artifacts on background-styled
+		// (selected / prompt) rows whose colored trailing spaces aren't trimmed.
+		rows = append(rows, component.EventRow(th, rd, i == m.cursor, width-6))
 	}
 	card := component.Card(th, "", strings.Join(rows, "\n"), width)
 
@@ -251,7 +254,7 @@ func (m *Detail) View(width, height int) string {
 	case m.loadingOlder:
 		hint = th.Muted.Render("loading older events…")
 	case m.hasMore:
-		hint = th.Muted.Render("press pgdn for older events")
+		hint = th.Muted.Render("press d for older events")
 	}
 
 	help := component.HelpBar(th, m.helpHints(), width)
@@ -267,7 +270,7 @@ func (m *Detail) helpHints() []component.KeyHint {
 	return []component.KeyHint{
 		{Key: "↑↓", Desc: "nav"},
 		{Key: "⏎", Desc: "open prompt"},
-		{Key: "pgup/pgdn", Desc: "scroll"},
+		{Key: "u/d", Desc: "scroll"},
 		{Key: "b", Desc: "back"},
 		{Key: "?", Desc: "about"},
 		{Key: "q", Desc: "quit"},

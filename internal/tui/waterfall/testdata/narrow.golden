@@ -1,0 +1,19 @@
+✦ cco · waterfall 7b2e4d10…                ● LIVE 
+
+           0ms──────────────────────────────3000ms
+
+main       █████████████                          
+subagent                ██████████████████████████
+auxiliary  (none)
+
+╭────────────────────────────────────────────────╮
+│  selected                                      │
+│  model                        claude-opus-4-7  │
+│  query_source                            main  │
+│  duration                             1000 ms  │
+│  cost                                 $0.2100  │
+│  tokens                    in 8000 / out 2000  │
+│  started                        10:00:00 · ok  │
+╰────────────────────────────────────────────────╯
+
+↑↓ select  b back  r refresh  ? about  q quit     

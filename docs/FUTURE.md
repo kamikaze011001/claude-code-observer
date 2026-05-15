@@ -29,9 +29,6 @@ On Prompt detail, `c` copies the Bash command under cursor. On a tool_result wit
 
 ## Mid-term (moderate effort)
 
-### Subagent waterfall view
-On Prompt detail, render subagent API requests as a horizontal flame graph: parent prompt's main request, then nested subagent requests with their durations. Shows where time is actually spent within a complex prompt. Needs careful event-ordering logic; we have all the timestamps already.
-
 ### Session annotations / tags
 Let the user attach a label to a session ("auth refactor", "investigating prod incident"). Stored in a `session_tags` table. Surfaces in Sessions list. Encourages going back and learning from past work.
 

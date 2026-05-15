@@ -7,8 +7,7 @@
 │  12:00:18 tool_result            Read 1ms                                                        │
 │  12:00:19 tool_result            Read 1ms                                                        │
 │  12:00:20 tool_result            Read 1ms                                                        │
-│                                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-press pgdn for older events
+press d for older events
 
-↑↓ nav  ⏎ open prompt  pgup/pgdn scroll  b back  ? about  q quit                                    
+↑↓ nav  ⏎ open prompt  u/d scroll  b back  ? about  q quit                                          

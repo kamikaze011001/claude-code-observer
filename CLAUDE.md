@@ -33,6 +33,25 @@ After every change, run in order:
 2. `make test` — fix failing tests
 3. `make build` — confirm it compiles
 
+## Git Workflow
+
+> The user frequently forgets to branch. Claude MUST enforce this — check before starting feature work.
+
+Before implementing any new feature or fix:
+
+1. **Check current branch** — run `git branch --show-current` and `git status`.
+2. **If on `master`:** pull latest first, then branch.
+   ```bash
+   git checkout master
+   git pull origin master
+   git checkout -b <type>/<short-description>   # e.g. feat/subagent-waterfall
+   ```
+3. **If on an unrelated feature branch:** stop and ask the user before proceeding — do not pile new work onto an existing branch.
+4. **Branch naming:** `feat/…`, `fix/…`, `refactor/…`, `docs/…`, `test/…`, `chore/…`.
+5. **Never commit feature work directly to `master`.** If it already happened, tell the user and offer to move the commits onto a branch.
+
+When work is complete: open a PR against `master`; don't merge locally without the user's say-so.
+
 ## Project Structure
 
 ```
