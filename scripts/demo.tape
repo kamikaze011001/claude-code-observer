@@ -34,8 +34,6 @@ Sleep 1.5s
 
 # Scene 3 — move the cursor (RECORD-TIME-TUNABLE: adjust count)
 Type "j"
-Sleep 300ms
-Type "j"
 Sleep 1s
 
 # Scene 4 — session detail (event timeline)
