@@ -20,7 +20,7 @@
   ↵ open  b back  q quit
 ```
 
-> _An animated demo GIF will replace this placeholder once recorded with [vhs](https://github.com/charmbracelet/vhs). See [Task 11](docs/superpowers/plans/2026-05-10-readme-enhancement.md) in the README plan._
+![claude-code-observer demo](docs/demo.gif)
 
 ## Why
 
