@@ -474,3 +474,48 @@ func TestSessionDetailView_Golden_Empty(t *testing.T) {
 	got := m.View(90, 32)
 	goldenDetail(t, "detail_golden_empty", got)
 }
+
+func TestDetail_CursorRestoreAcrossRefresh(t *testing.T) {
+	t.Parallel()
+	// Two deterministic turn items; avoid TS=0 so they are realistic values.
+	baseItems := []readstore.SessionItem{
+		{Kind: readstore.ItemTurn, Turn: readstore.TurnHeader{PromptID: "p1"}, TS: time.Unix(0, 1000)},
+		{Kind: readstore.ItemTurn, Turn: readstore.TurnHeader{PromptID: "p2"}, TS: time.Unix(0, 2000)},
+	}
+
+	t.Run("case_A_same_items_restores_cursor", func(t *testing.T) {
+		t.Parallel()
+		m := NewDetail(nil, "s1", nil).(*Detail)
+		m.applyItems(baseItems, false)
+		m.cursor = 1 // cursor on p2 (TS=2000)
+
+		upd, _ := m.Update(detailDataMsg{items: baseItems, at: time.Now()})
+		d := upd.(*Detail)
+		if d.cursor != 1 {
+			t.Errorf("cursor=%d want 1 (same Kind+TS survived refresh)", d.cursor)
+		}
+	})
+
+	t.Run("case_B_missing_item_falls_back", func(t *testing.T) {
+		t.Parallel()
+		m := NewDetail(nil, "s1", nil).(*Detail)
+		m.applyItems(baseItems, false)
+		m.cursor = 1 // cursor on p2 (TS=2000)
+
+		// New list: index-0 item survives (TS=1000), index-1 item replaced by
+		// brand-new p3 (TS=3000). TS=2000 is gone — cursor must not stay stale.
+		newItems := []readstore.SessionItem{
+			{Kind: readstore.ItemTurn, Turn: readstore.TurnHeader{PromptID: "p1"}, TS: time.Unix(0, 1000)},
+			{Kind: readstore.ItemTurn, Turn: readstore.TurnHeader{PromptID: "p3"}, TS: time.Unix(0, 3000)},
+		}
+		upd, _ := m.Update(detailDataMsg{items: newItems, at: time.Now()})
+		d := upd.(*Detail)
+		if d.cursor < 0 || d.cursor >= len(d.items) {
+			t.Errorf("cursor=%d out of valid range [0, %d)", d.cursor, len(d.items))
+		}
+		// With TS=2000 gone the restore loop finds no match; cursor stays at 0.
+		if d.cursor != 0 {
+			t.Errorf("cursor=%d want 0 (stale item absent, fell back to reset position)", d.cursor)
+		}
+	})
+}

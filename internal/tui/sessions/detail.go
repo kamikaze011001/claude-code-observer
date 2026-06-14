@@ -147,7 +147,9 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 		// Save the current item's identity for cursor restore after refresh.
 		var curKind readstore.SessionItemKind
 		var curTSNano int64
+		hadCursor := false
 		if m.cursor < len(m.items) {
+			hadCursor = true
 			cur := m.items[m.cursor]
 			curKind = cur.Kind
 			curTSNano = cur.TS.UnixNano()
@@ -161,7 +163,7 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 		m.cursor = 0
 		m.offset = 0
 		// Restore cursor: match by Kind + TS nanoseconds.
-		if curTSNano != 0 {
+		if hadCursor {
 			for i, it := range m.items {
 				if it.Kind == curKind && it.TS.UnixNano() == curTSNano {
 					m.cursor = i
@@ -169,6 +171,7 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 				}
 			}
 		}
+		// Safety net: guards the empty/shrunk-list case where no item matched the restore.
 		if m.cursor >= len(m.items) {
 			m.cursor = max0(len(m.items) - 1)
 		}
@@ -288,6 +291,8 @@ func (m *Detail) View(width, height int) string {
 	if labelHW < 4 {
 		labelHW = 4
 	}
+	// Header aligns with TurnHeaderRow; EventRow's time column sits 3 cols left of
+	// the header label, by design (EventRow rows carry no glyph prefix).
 	colHdr := fmt.Sprintf("   %-8s %-*s %-8s", "time", labelHW, "turn / event", "cost")
 	rows := []string{th.Muted.Render(colHdr)}
 
@@ -335,7 +340,7 @@ func (m *Detail) View(width, height int) string {
 				Time:      e.TS,
 				EventName: e.EventName,
 				Summary:   e.Summary,
-				IsPrompt:  false,
+				IsPrompt:  e.EventName == domain.EventUserPrompt && e.PromptID != "",
 			}
 			rows = append(rows, component.EventRow(th, rd, i == m.cursor, innerW))
 		}
