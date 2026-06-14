@@ -59,7 +59,7 @@
 | tool_denied | INTEGER | ✅ | Count of `tool_decision` events with `decision = 'reject'` |
 | prompts | INTEGER | ✅ | Count of distinct `prompt_id` |
 
-**Indexes:** `(started_at DESC)`, `(project_name, started_at DESC)`.
+**Indexes:** `(started_at DESC)`, `(project_name, started_at DESC)`, `(last_seen_at DESC)`. The session list and dashboard recent-sessions panel order by `last_seen_at DESC` (most recently active first).
 
 ### `prompts` (rollup)
 

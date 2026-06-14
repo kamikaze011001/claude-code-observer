@@ -108,6 +108,7 @@ type seedSession struct {
 	id        string
 	project   string
 	started   int64 // ns
+	lastSeen  int64 // ns; 0 → defaults to started + 60s
 	endedNull bool
 	cost      float64
 	prompts   int64
@@ -126,13 +127,17 @@ func seedSessions(t *testing.T, ss []seedSession) string {
 	}
 	defer repo.Close()
 	for _, s := range ss {
-		ended := sql.NullInt64{Int64: s.started + 60_000_000_000, Valid: !s.endedNull}
+		lastSeen := s.lastSeen
+		if lastSeen == 0 {
+			lastSeen = s.started + 60_000_000_000
+		}
+		ended := sql.NullInt64{Int64: lastSeen, Valid: !s.endedNull}
 		_, err := repo.DB().Exec(`
 			INSERT INTO sessions(session_id, project_name, started_at, last_seen_at, ended_at,
 				cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
 				api_requests, api_errors, subagent_requests, auxiliary_requests, tool_calls, tool_denied, prompts)
 			VALUES (?, NULLIF(?, ''), ?, ?, ?, ?, 0,0,0,0,0,0,0,0,0,0, ?)`,
-			s.id, s.project, s.started, s.started+60_000_000_000, ended, s.cost, s.prompts)
+			s.id, s.project, s.started, lastSeen, ended, s.cost, s.prompts)
 		if err != nil {
 			t.Fatalf("insert: %v", err)
 		}
@@ -179,6 +184,60 @@ func TestSessionsPage_FirstPageNoCursor(t *testing.T) {
 	}
 	if next != nil {
 		t.Fatalf("len(rows) < limit, next must be nil; got %v", *next)
+	}
+}
+
+func TestSessionsPage_OrdersByLastActivity(t *testing.T) {
+	t.Parallel()
+	// Creation order is s1 (newest) > s2 > s3 (oldest), but activity order is
+	// reversed: s3 was active most recently. The list must surface s3 first.
+	base := tsNS(2026, 5, 10, 12, 0, 0)
+	db := openTestRO(t, seedSessions(t, []seedSession{
+		{id: "s1", project: "alpha", started: base, lastSeen: base + int64(time.Minute), endedNull: true},
+		{id: "s2", project: "beta", started: base - int64(time.Hour), lastSeen: base + int64(2*time.Hour), endedNull: true},
+		{id: "s3", project: "gamma", started: base - int64(2*time.Hour), lastSeen: base + int64(4*time.Hour), endedNull: true},
+	}))
+	rows, _, err := readstore.SessionsPage(t.Context(), db, nil, 50)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if got := []string{rows[0].SessionID, rows[1].SessionID, rows[2].SessionID}; got[0] != "s3" || got[1] != "s2" || got[2] != "s1" {
+		t.Fatalf("want last-activity order [s3 s2 s1], got %v", got)
+	}
+}
+
+func TestSessionsPage_KeysetPaginationByLastActivity(t *testing.T) {
+	t.Parallel()
+	// last_seen ascends with i while started_at DESCends with i, so paginating by
+	// last_seen must walk all 12 rows without dropping or duplicating any.
+	var seeds []seedSession
+	base := tsNS(2026, 5, 10, 0, 0, 0)
+	for i := 0; i < 12; i++ {
+		seeds = append(seeds, seedSession{
+			id: fmt.Sprintf("s%02d", i), project: "p",
+			started:   base - int64(i)*int64(time.Minute),
+			lastSeen:  base + int64(i)*int64(time.Minute),
+			endedNull: true,
+		})
+	}
+	db := openTestRO(t, seedSessions(t, seeds))
+	seen := map[string]bool{}
+	var cursor *int64
+	for page := 0; page < 3; page++ {
+		rows, next, err := readstore.SessionsPage(t.Context(), db, cursor, 5)
+		if err != nil {
+			t.Fatalf("page %d: %v", page, err)
+		}
+		for _, r := range rows {
+			if seen[r.SessionID] {
+				t.Fatalf("dup across pages: %s", r.SessionID)
+			}
+			seen[r.SessionID] = true
+		}
+		cursor = next
+	}
+	if len(seen) != 12 {
+		t.Fatalf("want 12 distinct sessions across pages, got %d", len(seen))
 	}
 }
 
@@ -527,6 +586,47 @@ func TestRecentSessionsToday(t *testing.T) {
 	}
 	if !rows[0].Live {
 		t.Errorf("r1 should be live")
+	}
+}
+
+func TestRecentSessionsToday_OrdersByLastActivity(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	// All three started today; activity order is the reverse of start order.
+	ins := func(id string, started, lastSeen time.Time) {
+		_, err := repo.DB().ExecContext(context.Background(),
+			`INSERT INTO sessions
+			 (session_id, project_name, started_at, last_seen_at, ended_at,
+			  cost_usd, prompts, tool_calls, api_errors,
+			  input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
+			 VALUES (?, 'obs', ?, ?, NULL, 0, 0, 0, 0, 0, 0, 0, 0)`,
+			id, started.UnixNano(), lastSeen.UnixNano())
+		if err != nil {
+			t.Fatalf("insert %s: %v", id, err)
+		}
+	}
+	ins("a", now.Add(-30*time.Minute), now.Add(-25*time.Minute)) // newest start, oldest activity
+	ins("b", now.Add(-60*time.Minute), now.Add(-10*time.Minute))
+	ins("c", now.Add(-90*time.Minute), now.Add(-1*time.Minute)) // oldest start, newest activity
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	rows, err := readstore.RecentSessionsToday(context.Background(), pool, now, 10)
+	if err != nil {
+		t.Fatalf("RecentSessionsToday: %v", err)
+	}
+	if got := []string{rows[0].SessionID, rows[1].SessionID, rows[2].SessionID}; got[0] != "c" || got[1] != "b" || got[2] != "a" {
+		t.Fatalf("want last-activity order [c b a], got %v", got)
 	}
 }
 

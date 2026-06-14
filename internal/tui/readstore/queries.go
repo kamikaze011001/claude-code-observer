@@ -25,9 +25,9 @@ type SessionRow struct {
 	Live        bool
 }
 
-// SessionsPage returns one page of sessions newest-first. cursor is a started_at
-// (unix ns) — pass nil for the first page. The returned next-cursor is nil when
-// the page is the last one.
+// SessionsPage returns one page of sessions most-recently-active first. cursor
+// is a last_seen_at (unix ns) — pass nil for the first page. The returned
+// next-cursor is nil when the page is the last one.
 func SessionsPage(ctx context.Context, db *sql.DB, cursor *int64, limit int) ([]SessionRow, *int64, error) {
 	if limit <= 0 {
 		limit = 50
@@ -43,8 +43,8 @@ SELECT session_id,
        -- total_tokens = input + output + cache_read + cache_creation (all four columns summed)
        input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens AS tokens
 FROM sessions
-WHERE (? IS NULL OR started_at < ?)
-ORDER BY started_at DESC
+WHERE (? IS NULL OR last_seen_at < ?)
+ORDER BY last_seen_at DESC, started_at DESC
 LIMIT ?`
 	var cur sql.NullInt64
 	if cursor != nil {
@@ -83,7 +83,7 @@ LIMIT ?`
 	}
 	var next *int64
 	if len(out) == limit {
-		v := out[len(out)-1].StartedAt.UnixNano()
+		v := out[len(out)-1].LastSeenAt.UnixNano()
 		next = &v
 	}
 	return out, next, nil
@@ -231,8 +231,9 @@ LIMIT 3`
 }
 
 // RecentSessionsToday returns up to limit sessions started since the start of
-// the UTC day containing now, newest-first. The shape is the same as
-// TopSession so the dashboard can reuse the same row renderer.
+// the UTC day containing now, ordered by most recent activity (last_seen_at)
+// first. The shape is the same as TopSession so the dashboard can reuse the
+// same row renderer.
 func RecentSessionsToday(ctx context.Context, db *sql.DB, now time.Time, limit int) ([]TopSession, error) {
 	if limit <= 0 {
 		limit = 5
@@ -242,7 +243,7 @@ func RecentSessionsToday(ctx context.Context, db *sql.DB, now time.Time, limit i
 SELECT session_id, COALESCE(project_name, ''), started_at, cost_usd, prompts, ended_at IS NULL
 FROM sessions
 WHERE started_at >= ?
-ORDER BY started_at DESC
+ORDER BY last_seen_at DESC, started_at DESC
 LIMIT ?`
 	rows, err := db.QueryContext(ctx, q, startOfDay, limit)
 	if err != nil {
