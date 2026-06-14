@@ -164,3 +164,81 @@ func TestAPIRequestRow_NarrowWidthInvariant(t *testing.T) {
 		}
 	}
 }
+
+func TestTurnHeaderRow_Width(t *testing.T) {
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	r := TurnHeaderRowData{
+		Time: time.Date(2026, 6, 14, 15, 4, 1, 0, time.UTC),
+		Label: "/refactor", PromptLength: 412, DurationSec: 11,
+		Calls: 3, CostUSD: 0.036, Expanded: true,
+	}
+	for _, w := range []int{60, 90, 120} {
+		out := TurnHeaderRow(&th, r, true, w)
+		if got := lipgloss.Width(out); got != w {
+			t.Errorf("turn header width: got %d want %d", got, w)
+		}
+	}
+}
+
+func TestTurnChildRow_Width(t *testing.T) {
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	api := TurnChildRowData{Kind: "api", Model: "claude-opus-4-8", CostUSD: 0.031, InputTokens: 4800, OutputTokens: 910, Last: false}
+	tool := TurnChildRowData{Kind: "tool", ToolName: "Read", Success: true, DurationMS: 38, Last: true}
+	for _, w := range []int{40, 60, 90, 120} {
+		for _, rd := range []TurnChildRowData{api, tool} {
+			out := TurnChildRow(&th, rd, w)
+			if got := lipgloss.Width(out); got != w {
+				t.Errorf("turn child width (%s) at %d: got %d want %d", rd.Kind, w, got, w)
+			}
+		}
+	}
+}
+
+// TestTurnChildRow_ToolBranch_NarrowWidths covers the degenerate-width guard
+// (Fix 1) and the mark-column approach (Fix 2) across both glyph modes.
+//
+// Width arithmetic for "38ms" (durLen=4): overhead = tagCW(5)+1+markCW(2)+1+durLen = 13.
+// bodyW = width - connW(4) - costW(8) - gutter(2) = width - 14.
+//   width=24 → bodyW=10 → overhead(13) > bodyW → degenerate path.
+//   width=28 → bodyW=14 → overhead(13) ≤ bodyW → normal path (nameAvail=1).
+// For "10000ms" (durLen=7): overhead=16 → degenerate at width=24 and width=28.
+func TestTurnChildRow_ToolBranch_NarrowWidths(t *testing.T) {
+	glyphModes := []struct {
+		name   string
+		glyphs theme.Glyphs
+	}{
+		{"unicode", theme.UnicodeGlyphs()},
+		{"nerd", theme.NerdGlyphs()},
+	}
+
+	rowCases := []struct {
+		name  string
+		rd    TurnChildRowData
+		width int
+	}{
+		// Overflow trigger: overhead=13 > bodyW=10 → degenerate path.
+		{"tool_38ms_w24", TurnChildRowData{Kind: "tool", ToolName: "Read", Success: true, DurationMS: 38}, 24},
+		// Just above trigger: bodyW=14, overhead=13 → normal path (nameAvail=1).
+		{"tool_38ms_w28", TurnChildRowData{Kind: "tool", ToolName: "Read", Success: true, DurationMS: 38}, 28},
+		// Large duration: "10000ms" → overhead=16; degenerate at both widths.
+		{"tool_10000ms_w24", TurnChildRowData{Kind: "tool", ToolName: "Write", Success: false, DurationMS: 10000}, 24},
+		{"tool_10000ms_w28", TurnChildRowData{Kind: "tool", ToolName: "Write", Success: false, DurationMS: 10000}, 28},
+		// Long tool name at degenerate width — name is truncated into the fallback body.
+		{"long_toolname_w24", TurnChildRowData{Kind: "tool", ToolName: "SomeVeryLongToolNameThatExceeds", Success: true, DurationMS: 38}, 24},
+		// Long tool name at normal width — name is truncated to nameAvail.
+		{"long_toolname_w40", TurnChildRowData{Kind: "tool", ToolName: "SomeVeryLongToolNameThatExceeds", Success: true, DurationMS: 38}, 40},
+	}
+
+	for _, gm := range glyphModes {
+		th := theme.Build(theme.MochaPalette(), gm.glyphs)
+		for _, tc := range rowCases {
+			t.Run(gm.name+"/"+tc.name, func(t *testing.T) {
+				out := TurnChildRow(&th, tc.rd, tc.width)
+				if got := lipgloss.Width(out); got != tc.width {
+					t.Errorf("TurnChildRow(%s, w=%d): got width %d, want %d",
+						tc.name, tc.width, got, tc.width)
+				}
+			})
+		}
+	}
+}

@@ -236,3 +236,142 @@ func ToolCallRow(t *theme.Theme, r ToolCallRowData, width int) string {
 	line := lipgloss.JoinHorizontal(lipgloss.Top, timeCol, " ", nameCol, " ", markCol, " ", durCol, " ", noteCol)
 	return lipgloss.NewStyle().Width(width).Render(line)
 }
+
+// TurnHeaderRowData is one collapsible turn header in the session timeline.
+type TurnHeaderRowData struct {
+	Time         time.Time
+	Label        string // command name (e.g. "/refactor") or "prompt"
+	PromptLength int64
+	DurationSec  int64
+	Calls        int64
+	CostUSD      float64
+	Expanded     bool
+}
+
+// TurnHeaderRow renders one collapsible turn header in the session timeline.
+// width is the full display width; lipgloss.Width(out) == width always holds.
+func TurnHeaderRow(t *theme.Theme, r TurnHeaderRowData, selected bool, width int) string {
+	const (
+		glyphW = 2 // "▾ " / "▸ " — 1 cell glyph padded to 2
+		timeW  = 8
+		costW  = 8
+		gutter = 3 // three single-space separators: after glyph, after time, after label
+	)
+	glyph := "▸"
+	if r.Expanded {
+		glyph = "▾"
+	}
+	glyphCol := padRight(glyph, glyphW)
+	timeCol := padRight(r.Time.Format("15:04:05"), timeW)
+
+	meta := fmt.Sprintf("%dch", r.PromptLength)
+	if d := humanDuration(r.DurationSec); d != "" {
+		meta += " · " + d
+	}
+	meta += fmt.Sprintf(" · %d calls", r.Calls)
+
+	labelW := width - glyphW - timeW - costW - gutter
+	if labelW < 4 {
+		labelW = 4
+	}
+	// truncToWidth on plain text only — no ANSI in label or meta.
+	labelCol := padRight(truncToWidth(r.Label+"  "+meta, labelW), labelW)
+
+	// $%.3f: 6 chars (<$10), 7 chars ($10–$99), 8 chars ($100–$999); fits costW=8.
+	// Costs above $999.999 per turn are implausible but would overflow without truncation.
+	costStyled := lipgloss.NewStyle().Foreground(CostColor(t, r.CostUSD)).
+		Render(fmt.Sprintf("$%.3f", r.CostUSD))
+	costCol := padRight(costStyled, costW)
+
+	line := lipgloss.JoinHorizontal(lipgloss.Top,
+		glyphCol, " ", timeCol, " ", labelCol, " ", costCol,
+	)
+	// Turn headers always use BgAlt; Accent foreground only when selected.
+	s := lipgloss.NewStyle().Width(width).Background(t.Palette.BgAlt)
+	if selected {
+		s = s.Foreground(t.Palette.Accent)
+	}
+	return s.Render(line)
+}
+
+// TurnChildRowData is one api/tool row nested under an expanded turn.
+type TurnChildRowData struct {
+	Kind         string // "api" | "tool"
+	Model        string
+	CostUSD      float64
+	InputTokens  int64
+	OutputTokens int64
+	ToolName     string
+	Success      bool
+	DurationMS   int64
+	Last         bool // draws ╰ connector instead of ├
+}
+
+// TurnChildRow renders one api/tool row nested under an expanded turn.
+// width is the full display width; lipgloss.Width(out) == width always holds.
+func TurnChildRow(t *theme.Theme, r TurnChildRowData, width int) string {
+	const (
+		connW  = 4 // "   ├" / "   ╰" — 3 spaces + box char, all 1 cell each
+		costW  = 8
+		gutter = 2 // two single-space separators: after connector, after body
+	)
+	conn := "   ├"
+	if r.Last {
+		conn = "   ╰"
+	}
+	// Style the connector; lipgloss.JoinHorizontal measures its visible width (4).
+	connCol := lipgloss.NewStyle().Foreground(t.Palette.FgMuted).Render(conn)
+
+	bodyW := width - connW - costW - gutter
+	if bodyW < 4 {
+		bodyW = 4
+	}
+
+	var body, costCol string
+	if r.Kind == "api" {
+		// Build plain text first so truncToWidth can measure it safely.
+		txt := fmt.Sprintf("%s   in %s · out %s",
+			truncToWidth(r.Model, 18),
+			HumanInt(r.InputTokens),
+			HumanInt(r.OutputTokens))
+		// "api " tag = 4 visible; remaining = bodyW-4 for the rest.
+		tag := lipgloss.NewStyle().Foreground(t.Palette.Green).Render("api ")
+		// padRight handles the styled tag+plain text: lipgloss measures visible width.
+		body = padRight(tag+truncToWidth(txt, bodyW-4), bodyW)
+		costCol = padRight(CostText4(t, r.CostUSD), costW)
+	} else {
+		mark := t.Glyphs.Check
+		markStyle := lipgloss.NewStyle().Foreground(t.Palette.Green)
+		if !r.Success {
+			mark = t.Glyphs.Cross
+			markStyle = lipgloss.NewStyle().Foreground(t.Palette.Red)
+		}
+		// Column layout mirrors ToolCallRow — each piece is a fixed-width column:
+		//   tag(5) + nameCol(nameAvail) + " "(1) + markCol(2) + " "(1) + dur(durLen)
+		// markCW=2 allocates one extra cell so a 2-cell NerdFont glyph won't overflow;
+		// this is the same convention as ToolCallRow's markW=2.
+		const (
+			tagCW  = 5 // "tool " — visible cells
+			markCW = 2 // mark glyph padded to 2; safe for 1-cell unicode and 2-cell NerdFont
+		)
+		durationStr := fmt.Sprintf("%dms", r.DurationMS)
+		durLen := len(durationStr) // pure ASCII digits + "ms" — byte len == display width
+		// overhead = tag + space + mark + space + duration
+		overhead := tagCW + 1 + markCW + 1 + durLen
+		if overhead > bodyW {
+			// Degenerate path: fixed overhead alone exceeds bodyW. Fall back to a single
+			// truncated line so the row never overflows (padRight pads, never truncates).
+			body = padRight(truncToWidth("tool "+r.ToolName, bodyW), bodyW)
+		} else {
+			nameAvail := bodyW - overhead
+			tag := lipgloss.NewStyle().Foreground(t.Palette.FgMuted).Render("tool ")
+			nameCol := padRight(truncToWidth(r.ToolName, nameAvail), nameAvail)
+			markCol := padRight(markStyle.Render(mark), markCW)
+			body = padRight(tag+nameCol+" "+markCol+" "+durationStr, bodyW)
+		}
+		costCol = padRight(lipgloss.NewStyle().Foreground(t.Palette.FgMuted).Render("—"), costW)
+	}
+
+	line := lipgloss.JoinHorizontal(lipgloss.Top, connCol, " ", body, " ", costCol)
+	return lipgloss.NewStyle().Width(width).Render(line)
+}
