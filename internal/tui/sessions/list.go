@@ -213,6 +213,12 @@ func (m *List) View(width, height int) string {
 	}
 	columnHeader := th.Muted.Render(formatColHeader(inner))
 	rows := []string{columnHeader}
+	var maxCost float64
+	for _, r := range m.rows {
+		if r.CostUSD > maxCost {
+			maxCost = r.CostUSD
+		}
+	}
 	for i, r := range m.rows {
 		rd := component.SessionRowData{
 			Index:       i + 1,
@@ -220,6 +226,7 @@ func (m *List) View(width, height int) string {
 			ProjectName: defaultProject(r.ProjectName),
 			DurationSec: r.DurationSec,
 			CostUSD:     r.CostUSD,
+			MaxCostUSD:  maxCost,
 			Prompts:     r.Prompts,
 			Tokens:      r.Tokens,
 			Live:        r.Live,
@@ -253,31 +260,41 @@ func defaultProject(s string) string {
 }
 
 func formatColHeader(w int) string {
-	// Column widths must match SessionRow constants exactly.
-	// SessionRow uses: idxW=4 startW=18 durW=10 costW=8 prW=8 tokW=7 liveW=8 gutterCount=7
-	const (
-		idxW  = 4
-		startW = 18
-		durW  = 10
-		costW = 8
-		prW   = 8
-		tokW  = 7
-		liveW = 8
-		gutterCount = 7
-	)
-	projW := w - idxW - startW - durW - costW - prW - tokW - liveW - gutterCount
-	if projW < 4 {
-		projW = 4
+	// Column widths come from component package — single source of truth shared
+	// with SessionRow so headers and rows always stay aligned.
+	projW := w - component.ColIdxW - component.ColStartW - component.ColDurW - component.ColCostW - component.ColBarW - component.ColPrW - component.ColTokW - component.ColLiveW - component.ColGutterCount
+	effectiveBarW := component.ColBarW
+
+	// Mirror SessionRow's bar-shrinks-first logic exactly.
+	if projW < component.ProjMinW {
+		deficit := component.ProjMinW - projW
+		effectiveBarW = component.ColBarW - deficit
+		if effectiveBarW < 0 {
+			effectiveBarW = 0
+		}
+		projW = component.ProjMinW
 	}
-	return fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s",
-		idxW, "#",
-		startW, "started",
-		projW, "project",
-		durW, "duration",
-		costW, "cost",
-		prW, "prompts",
-		tokW, "tokens",
-		liveW, "status",
+	// Safety clamp: keep content within w when bar is fully consumed.
+	maxProjW := w - component.ColIdxW - component.ColStartW - component.ColDurW - component.ColCostW - effectiveBarW - component.ColPrW - component.ColTokW - component.ColLiveW - component.ColGutterCount
+	if maxProjW < projW {
+		projW = maxProjW
+		if projW < 0 {
+			projW = 0
+		}
+	}
+
+	// Use the same truncation helper as SessionRow for consistency.
+	projLabel := component.TruncToWidth("project", projW)
+	return fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s",
+		component.ColIdxW, "#",
+		component.ColStartW, "started",
+		projW, projLabel,
+		component.ColDurW, "duration",
+		component.ColCostW, "cost",
+		effectiveBarW, "spend",
+		component.ColPrW, "prompts",
+		component.ColTokW, "tokens",
+		component.ColLiveW, "status",
 	)
 }
 

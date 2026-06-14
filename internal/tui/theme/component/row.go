@@ -2,6 +2,8 @@ package component
 
 import (
 	"fmt"
+	"math"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -10,6 +12,30 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 )
 
+// Column widths for SessionRow and formatColHeader — single source of truth.
+// Both SessionRow and sessions.formatColHeader reference these exported constants
+// so header labels and row cells always stay aligned.
+const (
+	ColIdxW        = 4
+	ColStartW      = 18
+	ColDurW        = 10
+	ColCostW       = 8
+	ColBarW        = 10
+	ColPrW         = 8
+	ColTokW        = 7
+	ColLiveW       = 8
+	ColGutterCount = 8 // single-space gutters between the 9 columns
+)
+
+// ProjMinW is the minimum project-column display width before the spend bar
+// begins to shrink. The bar absorbs the width deficit first so the project
+// name stays readable on narrower terminals.
+const ProjMinW = 8
+
+// TruncToWidth is the exported form of truncToWidth, for use by sibling
+// packages that render header labels with the same truncation rules.
+func TruncToWidth(s string, w int) string { return truncToWidth(s, w) }
+
 // SessionRowData is one row in the sessions list or in a dashboard panel.
 type SessionRowData struct {
 	Index       int       // 1-based position in the page (0 to omit)
@@ -17,6 +43,7 @@ type SessionRowData struct {
 	ProjectName string
 	DurationSec int64 // 0 to omit
 	CostUSD     float64
+	MaxCostUSD  float64 // largest cost on the page; scales the spend bar (0 => empty bar)
 	Prompts     int64
 	Tokens      int64 // 0 to omit
 	Live        bool
@@ -26,36 +53,46 @@ type SessionRowData struct {
 // content area inside the card border (caller computes via Budget). The
 // returned line satisfies lipgloss.Width(out) == width.
 func SessionRow(t *theme.Theme, r SessionRowData, selected bool, width int) string {
-	// Column widths. 7 single-space gutters between 8 columns.
-	const (
-		idxW        = 4
-		startW      = 18
-		durW        = 10
-		costW       = 8
-		prW         = 8
-		tokW        = 7
-		liveW       = 8
-		gutterCount = 7 // spaces between idx, start, project, dur, cost, prompts, tokens, live
-	)
-	projW := width - idxW - startW - durW - costW - prW - tokW - liveW - gutterCount
-	if projW < 4 {
-		projW = 4
+	// Compute project column width with full bar first.
+	projW := width - ColIdxW - ColStartW - ColDurW - ColCostW - ColBarW - ColPrW - ColTokW - ColLiveW - ColGutterCount
+	effectiveBarW := ColBarW
+
+	// On narrow terminals the spend bar shrinks first so the project column
+	// stays readable down to ProjMinW cells.
+	if projW < ProjMinW {
+		deficit := ProjMinW - projW
+		effectiveBarW = ColBarW - deficit
+		if effectiveBarW < 0 {
+			effectiveBarW = 0
+		}
+		projW = ProjMinW
 	}
 
-	idx := padRight(fmt.Sprintf("%d", r.Index), idxW)
-	start := padRight(r.Started.Format("2006-01-02 15:04"), startW)
+	// Safety clamp: if even with zero bar we can't reach ProjMinW, shrink
+	// projW so the total content never exceeds width.
+	maxProjW := width - ColIdxW - ColStartW - ColDurW - ColCostW - effectiveBarW - ColPrW - ColTokW - ColLiveW - ColGutterCount
+	if maxProjW < projW {
+		projW = maxProjW
+		if projW < 0 {
+			projW = 0
+		}
+	}
+
+	idx := padRight(fmt.Sprintf("%d", r.Index), ColIdxW)
+	start := padRight(r.Started.Format("2006-01-02 15:04"), ColStartW)
 	project := padRight(truncToWidth(r.ProjectName, projW), projW)
-	dur := padRight(humanDuration(r.DurationSec), durW)
-	cost := padRight(fmt.Sprintf("$%.2f", r.CostUSD), costW)
-	prompts := padRight(fmt.Sprintf("%d", r.Prompts), prW)
-	tokens := padRight(HumanInt(r.Tokens), tokW)
-	live := padRight("", liveW)
+	dur := padRight(humanDuration(r.DurationSec), ColDurW)
+	cost := padRight(CostText(t, r.CostUSD), ColCostW)
+	bar := padRight(costBar(t, r.CostUSD, r.MaxCostUSD, effectiveBarW), effectiveBarW)
+	prompts := padRight(fmt.Sprintf("%d", r.Prompts), ColPrW)
+	tokens := padRight(HumanInt(r.Tokens), ColTokW)
+	live := padRight("", ColLiveW)
 	if r.Live {
-		live = padRight(StatusPill(t, StatusLive), liveW)
+		live = padRight(StatusPill(t, StatusLive), ColLiveW)
 	}
 
 	line := lipgloss.JoinHorizontal(lipgloss.Top,
-		idx, " ", start, " ", project, " ", dur, " ", cost, " ", prompts, " ", tokens, " ", live,
+		idx, " ", start, " ", project, " ", dur, " ", cost, " ", bar, " ", prompts, " ", tokens, " ", live,
 	)
 	if selected {
 		line = lipgloss.NewStyle().Background(t.Palette.BgAlt).Width(width).Render(line)
@@ -63,6 +100,28 @@ func SessionRow(t *theme.Theme, r SessionRowData, selected bool, width int) stri
 		line = lipgloss.NewStyle().Width(width).Render(line)
 	}
 	return line
+}
+
+// costBar renders a proportional spend bar w cells wide: filled cells are
+// tier-colored, the remainder is muted track. max<=0 => empty track.
+func costBar(t *theme.Theme, cost, max float64, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	filled := 0
+	if max > 0 {
+		filled = int(math.Round(cost / max * float64(w)))
+		if filled > w {
+			filled = w
+		}
+		// filled < 0 is unreachable (cost >= 0 and max > 0), kept as defensive clamp.
+		if filled < 0 {
+			filled = 0
+		}
+	}
+	full := lipgloss.NewStyle().Foreground(CostColor(t, cost)).Render(strings.Repeat("█", filled))
+	track := lipgloss.NewStyle().Foreground(t.Palette.BgAlt).Render(strings.Repeat("░", w-filled))
+	return full + track
 }
 
 // padRight returns s padded with spaces to exactly `w` display cells.

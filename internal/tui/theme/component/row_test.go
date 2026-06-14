@@ -88,3 +88,50 @@ func TestToolCallRow_Width(t *testing.T) {
 		t.Errorf("tool row width: got %d want 70", got)
 	}
 }
+
+func TestSessionRow_WidthWithBar(t *testing.T) {
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	r := SessionRowData{
+		Index: 1, Started: time.Date(2026, 6, 14, 15, 4, 0, 0, time.UTC),
+		ProjectName: "claude-code-observer", DurationSec: 662,
+		CostUSD: 2.84, MaxCostUSD: 2.84, Prompts: 14, Tokens: 1_200_000, Live: false,
+	}
+	out := SessionRow(&th, r, false, 100)
+	if got := lipgloss.Width(out); got != 100 {
+		t.Errorf("session row width with bar: got %d want 100", got)
+	}
+}
+
+func TestSessionRow_ZeroMaxCostNoPanic(t *testing.T) {
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	r := SessionRowData{Index: 1, Started: time.Now(), ProjectName: "x", CostUSD: 0, MaxCostUSD: 0}
+	out := SessionRow(&th, r, false, 100) // must not divide by zero
+	if got := lipgloss.Width(out); got != 100 {
+		t.Errorf("zero-max width: got %d want 100", got)
+	}
+}
+
+// TestSessionRow_NarrowWidthInvariant asserts that SessionRow always returns
+// exactly `width` display cells at various terminal widths, including those
+// narrow enough to shrink or eliminate the spend bar.
+func TestSessionRow_NarrowWidthInvariant(t *testing.T) {
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	r := SessionRowData{
+		Index:       1,
+		Started:     time.Date(2026, 6, 14, 15, 4, 0, 0, time.UTC),
+		ProjectName: "claude-code-observer",
+		DurationSec: 662,
+		CostUSD:     2.84,
+		MaxCostUSD:  2.84,
+		Prompts:     14,
+		Tokens:      1_200_000,
+		Live:        false,
+	}
+	widths := []int{60, 80, 90, 100, 120}
+	for _, w := range widths {
+		out := SessionRow(&th, r, false, w)
+		if got := lipgloss.Width(out); got != w {
+			t.Errorf("width %d: lipgloss.Width(SessionRow) = %d, want %d", w, got, w)
+		}
+	}
+}

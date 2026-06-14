@@ -148,6 +148,12 @@ func (m *Model) renderTopSessions(t *theme.Theme, width int) string {
 		return component.Card(t, "top sessions today (by cost)",
 			t.Muted.Render("(no sessions today)"), width)
 	}
+	var maxCost float64
+	for _, ts := range m.top {
+		if ts.CostUSD > maxCost {
+			maxCost = ts.CostUSD
+		}
+	}
 	var b strings.Builder
 	for i, ts := range m.top {
 		rd := component.SessionRowData{
@@ -155,6 +161,7 @@ func (m *Model) renderTopSessions(t *theme.Theme, width int) string {
 			Started:     time.Unix(0, ts.StartedAt).Local(),
 			ProjectName: ts.ProjectName,
 			CostUSD:     ts.CostUSD,
+			MaxCostUSD:  maxCost,
 			Prompts:     ts.Prompts,
 			Live:        ts.Live,
 		}
@@ -175,6 +182,12 @@ func (m *Model) renderRecentSessions(t *theme.Theme, width int) string {
 		return component.Card(t, "recent sessions",
 			t.Muted.Render("(no sessions today)"), width)
 	}
+	var maxCost float64
+	for _, ts := range m.recent {
+		if ts.CostUSD > maxCost {
+			maxCost = ts.CostUSD
+		}
+	}
 	var b strings.Builder
 	for i, ts := range m.recent {
 		rd := component.SessionRowData{
@@ -182,6 +195,7 @@ func (m *Model) renderRecentSessions(t *theme.Theme, width int) string {
 			Started:     time.Unix(0, ts.StartedAt).Local(),
 			ProjectName: ts.ProjectName,
 			CostUSD:     ts.CostUSD,
+			MaxCostUSD:  maxCost,
 			Prompts:     ts.Prompts,
 			Live:        ts.Live,
 		}
