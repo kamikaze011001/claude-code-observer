@@ -172,8 +172,8 @@ func TestRunMigrations_EmbeddedInitial(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_version").Scan(&v); err != nil {
 		t.Fatalf("schema_version: %v", err)
 	}
-	if v != 1 {
-		t.Errorf("version = %d, want 1", v)
+	if v != 2 {
+		t.Errorf("version = %d, want 2", v)
 	}
 
 	for _, table := range []string{"events", "sessions", "prompts", "metric_snapshots"} {
@@ -192,6 +192,7 @@ func TestRunMigrations_EmbeddedInitial(t *testing.T) {
 	wantIndexes := []string{
 		"idx_events_session_ts", "idx_events_prompt", "idx_events_name_ts",
 		"idx_sessions_started", "idx_sessions_project_started",
+		"idx_sessions_last_seen",
 		"idx_prompts_session_started",
 	}
 	for _, ix := range wantIndexes {

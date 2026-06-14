@@ -111,7 +111,7 @@ None. The Receiver is the only network surface, and it binds to `127.0.0.1:4317`
 - **Write throughput target: 100 events/sec sustained.** Far above realistic Claude Code emission rate (~10–20 events/sec at peak across multiple parallel sessions). Single SQLite writer in WAL mode handles this easily.
 - **TUI poll interval: 1 s.** Re-runs only the queries needed for the visible view. Dashboard rollup queries should return in <5 ms with rollup tables of any realistic size.
 - **JSON1 `json_extract` queries** are reserved for drill-down screens (Prompt detail). Hot-path queries (Dashboard, Sessions list) read only typed columns from rollup tables.
-- **Indexes:** `events(session_id, ts)`, `events(prompt_id)`, `sessions(started_at DESC)`, `prompts(session_id, ts)`. No FTS in v1 (Future feature — see [FUTURE.md](FUTURE.md)).
+- **Indexes:** `events(session_id, ts)`, `events(prompt_id)`, `sessions(started_at DESC)`, `sessions(last_seen_at DESC)`, `prompts(session_id, ts)`. No FTS in v1 (Future feature — see [FUTURE.md](FUTURE.md)).
 
 ## Failure Modes
 
