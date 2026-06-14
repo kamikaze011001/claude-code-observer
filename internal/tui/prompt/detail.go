@@ -187,15 +187,18 @@ func (d *Detail) View(width, height int) string {
 
 	// api requests card
 	apiRows := []string{}
+	var cum float64
 	for _, r := range d.result.APIRequests {
+		cum += r.CostUSD
 		apiRows = append(apiRows, component.APIRequestRow(th, component.APIRequestRowData{
-			Time: r.TS, Model: r.Model, CostUSD: r.CostUSD,
+			Time: r.TS, Model: r.Model, CostUSD: r.CostUSD, CumulativeUSD: cum,
 			InputTokens: r.InputTokens, OutputTokens: r.OutputTokens,
 		}, width-4))
 	}
-	apiCard := component.Card(th, "api requests", strings.Join(apiRows, "\n"), width)
+	apiTitle := fmt.Sprintf("api requests · total %s", component.CostText(th, p.CostUSD))
+	apiCard := component.Card(th, apiTitle, strings.Join(apiRows, "\n"), width)
 	if len(apiRows) == 0 {
-		apiCard = component.Card(th, "api requests", th.Muted.Render("(none)"), width)
+		apiCard = component.Card(th, apiTitle, th.Muted.Render("(none)"), width)
 	}
 
 	// tool calls card

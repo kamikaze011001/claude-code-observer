@@ -172,11 +172,12 @@ func EventRow(t *theme.Theme, e EventRowData, selected bool, width int) string {
 
 // APIRequestRowData renders one api_request event.
 type APIRequestRowData struct {
-	Time         time.Time
-	Model        string
-	CostUSD      float64
-	InputTokens  int64
-	OutputTokens int64
+	Time          time.Time
+	Model         string
+	CostUSD       float64
+	CumulativeUSD float64
+	InputTokens   int64
+	OutputTokens  int64
 }
 
 func APIRequestRow(t *theme.Theme, r APIRequestRowData, width int) string {
@@ -184,17 +185,19 @@ func APIRequestRow(t *theme.Theme, r APIRequestRowData, width int) string {
 		timeW   = 8
 		modelW  = 18
 		costW   = 8
-		gutters = 3 // three single-space gutters
+		cumW    = 10
+		gutters = 4 // four single-space gutters between five columns
 	)
-	tailW := width - timeW - modelW - costW - gutters
+	tailW := width - timeW - modelW - costW - cumW - gutters
 	if tailW < 8 {
 		tailW = 8
 	}
 	timeCol := padRight(r.Time.Format("15:04:05"), timeW)
 	modelCol := padRight(truncToWidth(r.Model, modelW), modelW)
-	costCol := padRight(t.Value.Render(fmt.Sprintf("$%.2f", r.CostUSD)), costW)
+	costCol := padRight(CostText4(t, r.CostUSD), costW)
+	cumCol := padRight(t.Muted.Render(fmt.Sprintf("Σ $%.4f", r.CumulativeUSD)), cumW)
 	tail := padRight(fmt.Sprintf("in %d  out %d", r.InputTokens, r.OutputTokens), tailW)
-	line := lipgloss.JoinHorizontal(lipgloss.Top, timeCol, " ", modelCol, " ", costCol, " ", tail)
+	line := lipgloss.JoinHorizontal(lipgloss.Top, timeCol, " ", modelCol, " ", costCol, " ", cumCol, " ", tail)
 	return lipgloss.NewStyle().Width(width).Render(line)
 }
 

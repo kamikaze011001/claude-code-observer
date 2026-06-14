@@ -135,3 +135,32 @@ func TestSessionRow_NarrowWidthInvariant(t *testing.T) {
 		}
 	}
 }
+
+func TestAPIRequestRow_WidthWithCumulative(t *testing.T) {
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	r := APIRequestRowData{
+		Time: time.Date(2026, 6, 14, 15, 4, 9, 0, time.UTC),
+		Model: "claude-opus-4-8", CostUSD: 0.031, CumulativeUSD: 0.035,
+		InputTokens: 4800, OutputTokens: 910,
+	}
+	out := APIRequestRow(&th, r, 80)
+	if got := lipgloss.Width(out); got != 80 {
+		t.Errorf("api row width with cumulative: got %d want 80", got)
+	}
+}
+
+func TestAPIRequestRow_NarrowWidthInvariant(t *testing.T) {
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	r := APIRequestRowData{
+		Time: time.Date(2026, 6, 14, 15, 4, 9, 0, time.UTC),
+		Model: "claude-opus-4-8", CostUSD: 0.031, CumulativeUSD: 0.035,
+		InputTokens: 4800, OutputTokens: 910,
+	}
+	widths := []int{40, 60, 80, 120}
+	for _, w := range widths {
+		out := APIRequestRow(&th, r, w)
+		if got := lipgloss.Width(out); got != w {
+			t.Errorf("width %d: lipgloss.Width(APIRequestRow) = %d, want %d", w, got, w)
+		}
+	}
+}
