@@ -49,7 +49,7 @@ type List struct {
 }
 
 type listKeys struct {
-	Up, Down, PgUp, PgDn, Top, Bottom, Enter key.Binding
+	Up, Down, PgUp, PgDn, Top, Bottom, Enter, Toggle key.Binding
 }
 
 func defaultListKeys() listKeys {
@@ -61,6 +61,7 @@ func defaultListKeys() listKeys {
 		Top:    key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "top")),
 		Bottom: key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "bottom")),
 		Enter:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
+		Toggle: key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "expand")),
 	}
 }
 

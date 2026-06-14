@@ -48,6 +48,12 @@ type detailOlderMsg struct {
 	at      time.Time
 }
 
+// detailChildrenMsg delivers the lazily-loaded children for a specific turn.
+type detailChildrenMsg struct {
+	promptID string
+	children []readstore.TurnChild
+}
+
 // Detail is the session event timeline view model.
 type Detail struct {
 	pool         *sql.DB
@@ -93,6 +99,7 @@ func (m *Detail) ShortHelp() []key.Binding {
 		m.keys.Down,
 		m.keys.PgUp,
 		m.keys.PgDn,
+		m.keys.Toggle,
 		m.keys.Enter,
 		key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "back")),
 		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "about")),
@@ -184,6 +191,16 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 		m.loadingOlder = false
 		return m, nil
 
+	case detailChildrenMsg:
+		for i := range m.items {
+			if m.items[i].Kind == readstore.ItemTurn && m.items[i].Turn.PromptID == v.promptID {
+				m.items[i].children = v.children
+				m.items[i].loaded = true
+				break
+			}
+		}
+		return m, nil
+
 	case app.ErrMsg:
 		m.inFlight = false
 		m.loadingOlder = false
@@ -226,23 +243,25 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 			if m.cursor < 0 {
 				m.cursor = 0
 			}
+		case key.Matches(v, m.keys.Toggle):
+			if len(m.items) == 0 || m.items[m.cursor].Kind != readstore.ItemTurn {
+				return m, nil
+			}
+			it := &m.items[m.cursor]
+			it.expanded = !it.expanded
+			if it.expanded && !it.loaded {
+				return m, m.fetchChildrenCmd(it.Turn.PromptID)
+			}
+			return m, nil
 		case key.Matches(v, m.keys.Enter):
-			if len(m.items) == 0 {
+			if len(m.items) == 0 || m.items[m.cursor].Kind != readstore.ItemTurn {
 				return m, nil
 			}
-			it := m.items[m.cursor]
-			// Enter on an event row: open prompt if it's a user_prompt with a PromptID.
-			// Enter on turn headers is implemented in Task 8.
-			if it.Kind != readstore.ItemEvent {
+			pid := m.items[m.cursor].Turn.PromptID
+			if pid == "" {
 				return m, nil
 			}
-			row := it.Event
-			if row.EventName != domain.EventUserPrompt || row.PromptID == "" {
-				return m, nil
-			}
-			pool := m.pool
-			pid := row.PromptID
-			th := m.theme
+			pool, th := m.pool, m.theme
 			return m, func() tea.Msg {
 				return app.PushViewMsg{V: newPromptDetail(pool, pid, th)}
 			}
@@ -296,11 +315,13 @@ func (m *Detail) View(width, height int) string {
 	colHdr := fmt.Sprintf("   %-8s %-*s %-8s", "time", labelHW, "turn / event", "cost")
 	rows := []string{th.Muted.Render(colHdr)}
 
-	end := m.offset + m.viewport
-	if end > len(m.items) {
-		end = len(m.items)
-	}
-	for i := m.offset; i < end; i++ {
+	// Row-budget loop: tracks rendered rows (1 per turn header + 1 per child +
+	// 1 per event) and stops once the budget (m.viewport) is consumed.  This
+	// prevents an expanded turn with many children from overflowing the card
+	// height, while leaving cursor navigation item-based (clampOffset /
+	// visibleRows / PgDn step are unchanged).
+	budget := m.viewport
+	for i := m.offset; budget > 0 && i < len(m.items); i++ {
 		it := m.items[i]
 		switch it.Kind {
 		case readstore.ItemTurn:
@@ -319,8 +340,12 @@ func (m *Detail) View(width, height int) string {
 				Expanded:     it.expanded,
 			}
 			rows = append(rows, component.TurnHeaderRow(th, rd, i == m.cursor, innerW))
-			// Children render only when expanded; currently always empty (Task 8 loads them).
+			budget-- // one row consumed for the turn header
+			// Children render only when expanded; each child consumes one budget row.
 			for j, child := range it.children {
+				if budget <= 0 {
+					break
+				}
 				crd := component.TurnChildRowData{
 					Kind:         child.Kind,
 					Model:        child.Model,
@@ -333,6 +358,7 @@ func (m *Detail) View(width, height int) string {
 					Last:         j == len(it.children)-1,
 				}
 				rows = append(rows, component.TurnChildRow(th, crd, innerW))
+				budget--
 			}
 		case readstore.ItemEvent:
 			e := it.Event
@@ -343,6 +369,7 @@ func (m *Detail) View(width, height int) string {
 				IsPrompt:  e.EventName == domain.EventUserPrompt && e.PromptID != "",
 			}
 			rows = append(rows, component.EventRow(th, rd, i == m.cursor, innerW))
+			budget--
 		}
 	}
 	card := component.Card(th, "", strings.Join(rows, "\n"), width)
@@ -367,6 +394,7 @@ func (m *Detail) View(width, height int) string {
 func (m *Detail) helpHints() []component.KeyHint {
 	return []component.KeyHint{
 		{Key: "↑↓", Desc: "nav"},
+		{Key: "space", Desc: "expand"},
 		{Key: "⏎", Desc: "open prompt"},
 		{Key: "u/d", Desc: "scroll"},
 		{Key: "b", Desc: "back"},
@@ -380,6 +408,25 @@ func shortID(s string) string {
 		return s[:8] + "…"
 	}
 	return s
+}
+
+// fetchChildrenCmd issues a fetch for the child events (api_request /
+// tool_result) belonging to promptID. The result is delivered as
+// detailChildrenMsg and merged into the matching timelineItem.
+func (m *Detail) fetchChildrenCmd(promptID string) tea.Cmd {
+	pool := m.pool
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), detailFetchTimeout)
+		defer cancel()
+		if pool == nil {
+			return app.ErrMsg{Err: errNoPool}
+		}
+		ch, err := readstore.SessionTurnChildren(ctx, pool, promptID)
+		if err != nil {
+			return app.ErrMsg{Err: err}
+		}
+		return detailChildrenMsg{promptID: promptID, children: ch}
+	}
 }
 
 // fetchOlderCmd issues a keyset-paginated fetch for items strictly older

@@ -11,7 +11,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
-	"github.com/kamikaze011001/claude-code-observer/internal/tui/prompt"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
@@ -59,23 +58,6 @@ func TestDetail_KeyJK(t *testing.T) {
 	}
 }
 
-func TestDetail_EnterOnPromptPushes(t *testing.T) {
-	t.Parallel()
-	m := NewDetail(nil, "s1", nil).(*Detail)
-	m.items = eventItems(
-		readstore.EventRow{TS: time.Now(), EventName: "tool_result", PromptID: "p1"},
-		readstore.EventRow{TS: time.Now(), EventName: "user_prompt", PromptID: "p1"},
-	)
-	m.cursor = 1
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("expected push cmd")
-	}
-	msg := cmd()
-	if _, ok := msg.(app.PushViewMsg); !ok {
-		t.Fatalf("msg=%T want PushViewMsg", msg)
-	}
-}
 
 func TestDetail_EnterOnNonPromptDoesNothing(t *testing.T) {
 	t.Parallel()
@@ -179,23 +161,6 @@ func TestDetail_View_Mixed(t *testing.T) {
 	goldenDetail(t, "detail_mixed", out)
 }
 
-func TestDetail_EnterPromptPushesPromptDetail(t *testing.T) {
-	t.Parallel()
-	m := NewDetail(nil, "s1", nil).(*Detail)
-	m.items = eventItems(readstore.EventRow{TS: time.Now(), EventName: "user_prompt", PromptID: "pX"})
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("no cmd")
-	}
-	msg := cmd()
-	push, ok := msg.(app.PushViewMsg)
-	if !ok {
-		t.Fatalf("msg type=%T", msg)
-	}
-	if _, isPrompt := push.V.(*prompt.Detail); !isPrompt {
-		t.Fatalf("pushed=%T want *prompt.Detail", push.V)
-	}
-}
 
 func TestDetail_ShortHelpAndInit(t *testing.T) {
 	t.Parallel()
@@ -518,4 +483,93 @@ func TestDetail_CursorRestoreAcrossRefresh(t *testing.T) {
 			t.Errorf("cursor=%d want 0 (stale item absent, fell back to reset position)", d.cursor)
 		}
 	})
+}
+
+func TestDetail_SpaceTogglesExpand(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1", nil).(*Detail)
+	m.applyItems([]readstore.SessionItem{
+		{Kind: readstore.ItemTurn, Turn: readstore.TurnHeader{PromptID: "p1"}, TS: time.Unix(0, 1000)},
+	}, false)
+	m.items[0].expanded = false
+	m.items[0].loaded = true // pretend children already loaded; no pool needed
+	m.cursor = 0
+	upd, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	if !upd.(*Detail).items[0].expanded {
+		t.Fatal("space should expand a collapsed turn")
+	}
+}
+
+func TestDetail_EnterOnTurnPushesPromptDetail(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1", nil).(*Detail)
+	m.applyItems([]readstore.SessionItem{
+		{Kind: readstore.ItemTurn, Turn: readstore.TurnHeader{PromptID: "p1"}, TS: time.Unix(0, 1000)},
+	}, false)
+	m.cursor = 0
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected push cmd")
+	}
+	if _, ok := cmd().(app.PushViewMsg); !ok {
+		t.Fatal("want PushViewMsg")
+	}
+}
+
+func TestDetail_EnterOnEventDoesNothing(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1", nil).(*Detail)
+	m.applyItems([]readstore.SessionItem{
+		{Kind: readstore.ItemEvent, Event: readstore.EventRow{EventName: "auth"}, TS: time.Unix(0, 1000)},
+	}, false)
+	m.cursor = 0
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil {
+		t.Fatal("expected no cmd on session-level event")
+	}
+}
+
+func TestDetail_View_ExpandedTurnDoesNotOverflowViewport(t *testing.T) {
+	t.Parallel()
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	m := &Detail{theme: &th, sessionID: "s1", lastOK: time.Now()}
+
+	// Build an expanded turn with 10 children — far more than the viewport can hold.
+	children := make([]readstore.TurnChild, 10)
+	for i := range children {
+		children[i] = readstore.TurnChild{Kind: "api", Model: "claude-opus-4"}
+	}
+	m.items = []timelineItem{{
+		SessionItem: readstore.SessionItem{
+			Kind: readstore.ItemTurn,
+			Turn: readstore.TurnHeader{PromptID: "p1", CommandName: "test"},
+			TS:   time.Unix(0, 1000),
+		},
+		expanded: true,
+		children: children,
+		loaded:   true,
+	}}
+	m.cursor = 0
+
+	// height=12 → visibleRows(12)=5 → m.viewport=5 after View sets it.
+	// Without the row-budget guard, 11 item rows (1 turn header + 10 children)
+	// would render, overflowing the card.  With the guard, at most m.viewport
+	// item rows should appear.
+	out := stripANSI(m.View(100, 12))
+
+	// Count card body lines: lines whose trimmed form starts and ends with "│"
+	// (the card border character).  This includes the column header row.
+	// Upper bound: m.viewport item rows + 1 column header = m.viewport + 1.
+	var bodyRows int
+	for _, ln := range strings.Split(out, "\n") {
+		s := strings.TrimSpace(ln)
+		if strings.HasPrefix(s, "│") && strings.HasSuffix(s, "│") {
+			bodyRows++
+		}
+	}
+	maxAllowed := m.viewport + 1 // viewport set by View(100, 12)
+	if bodyRows > maxAllowed {
+		t.Fatalf("body rows=%d exceeds allowed %d (viewport=%d + 1 col header); overflow guard broken\n%s",
+			bodyRows, maxAllowed, m.viewport, out)
+	}
 }
