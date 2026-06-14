@@ -611,6 +611,78 @@ LIMIT ?`
 	return out, len(out) == limit, nil
 }
 
+// TurnChild is one api_request or tool_result event under a turn, normalized
+// for inline rendering. Kind is "api" or "tool".
+type TurnChild struct {
+	TS           time.Time
+	Kind         string
+	Model        string
+	CostUSD      float64
+	InputTokens  int64
+	OutputTokens int64
+	ToolName     string
+	Success      bool
+	DurationMS   int64
+}
+
+// SessionTurnChildren returns the api_request and tool_result events for a
+// prompt, ordered ascending by ts. Empty slice (not error) when none.
+func SessionTurnChildren(ctx context.Context, db *sql.DB, promptID string) ([]TurnChild, error) {
+	rows, err := db.QueryContext(ctx, `
+SELECT ts, event_name, attrs
+FROM events
+WHERE prompt_id = ? AND event_name IN ('api_request','tool_result')
+ORDER BY ts`, promptID)
+	if err != nil {
+		return nil, fmt.Errorf("turn children: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]TurnChild, 0)
+	for rows.Next() {
+		var (
+			ts        int64
+			eventName string
+			attrs     []byte
+		)
+		if err := rows.Scan(&ts, &eventName, &attrs); err != nil {
+			return nil, fmt.Errorf("turn children scan: %w", err)
+		}
+		var a map[string]any
+		_ = json.Unmarshal(attrs, &a)
+		c := TurnChild{TS: time.Unix(0, ts).Local()}
+		switch eventName {
+		case domain.EventAPIRequest:
+			c.Kind = "api"
+			c.Model, _ = a["model"].(string)
+			if v, ok := a["cost_usd"].(float64); ok {
+				c.CostUSD = v
+			}
+			if v, ok := a["input_tokens"].(float64); ok {
+				c.InputTokens = int64(v)
+			}
+			if v, ok := a["output_tokens"].(float64); ok {
+				c.OutputTokens = int64(v)
+			}
+		case domain.EventToolResult:
+			c.Kind = "tool"
+			c.ToolName, _ = a["tool_name"].(string)
+			// tool_result emits duration_ms/success as quoted strings — coerce via helpers.
+			if v, ok := attrInt(a, "duration_ms"); ok {
+				c.DurationMS = v
+			}
+			if v, ok := attrBool(a, "success"); ok {
+				c.Success = v
+			}
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("turn children iter: %w", err)
+	}
+	return out, nil
+}
+
 // WaterfallRequest is one api_request or api_error event under a prompt,
 // carrying the fields the waterfall view needs. TS is the event timestamp
 // (fired at stream-end); the request start is TS - DurationMS.

@@ -788,6 +788,65 @@ func TestSessionTurns_InterleavesAndPaginates(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// SessionTurnChildren tests
+// ---------------------------------------------------------------------------
+
+func TestSessionTurnChildren_OrdersAndTypes(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	ctx := context.Background()
+
+	// Insert events directly — events table has no FK constraint to prompts,
+	// so no parent session or prompt row is needed.
+	_, err = repo.DB().ExecContext(ctx,
+		`INSERT INTO events(ts,session_id,prompt_id,event_name,attrs)
+		 VALUES (1100,'s1','p1','api_request','{"model":"claude-opus-4-8","cost_usd":0.004,"input_tokens":1200,"output_tokens":340}')`)
+	if err != nil {
+		t.Fatalf("api_request insert: %v", err)
+	}
+	_, err = repo.DB().ExecContext(ctx,
+		`INSERT INTO events(ts,session_id,prompt_id,event_name,attrs)
+		 VALUES (1200,'s1','p1','tool_result','{"tool_name":"Read","duration_ms":"38","success":"true"}')`)
+	if err != nil {
+		t.Fatalf("tool_result insert: %v", err)
+	}
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	children, err := readstore.SessionTurnChildren(ctx, pool, "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(children) != 2 {
+		t.Fatalf("len=%d want 2", len(children))
+	}
+	if children[0].Kind != "api" || children[0].CostUSD != 0.004 {
+		t.Errorf("child0=%+v want api 0.004", children[0])
+	}
+	if children[1].Kind != "tool" || children[1].ToolName != "Read" || !children[1].Success {
+		t.Errorf("child1=%+v want tool Read ok", children[1])
+	}
+
+	// Empty case: a promptID with no children returns empty slice, nil error.
+	empty, err := readstore.SessionTurnChildren(ctx, pool, "no-such-prompt")
+	if err != nil {
+		t.Fatalf("empty case err: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("empty case: len=%d want 0", len(empty))
+	}
+}
+
 func TestSessionTurns_KeysetPagination(t *testing.T) {
 	home := t.TempDir()
 	repo, err := repository.Open(home)
