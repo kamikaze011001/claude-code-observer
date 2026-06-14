@@ -24,17 +24,26 @@ const (
 	detailPageSize     = 50
 )
 
+// timelineItem wraps a SessionItem with view state. For turns, children are
+// loaded lazily on first expand (Task 8).
+type timelineItem struct {
+	readstore.SessionItem
+	expanded bool
+	children []readstore.TurnChild
+	loaded   bool
+}
+
 type detailDataMsg struct {
-	events  []readstore.EventRow
+	items   []readstore.SessionItem
 	hasMore bool
 	at      time.Time
 }
 
-// detailOlderMsg carries events older than the current tail. Unlike
-// detailDataMsg it is appended to m.events, never replaces — preserves the
+// detailOlderMsg carries items older than the current tail. Unlike
+// detailDataMsg it is appended to m.items, never replaces — preserves the
 // user's cursor and scroll position while the list grows below them.
 type detailOlderMsg struct {
-	events  []readstore.EventRow
+	items   []readstore.SessionItem
 	hasMore bool
 	at      time.Time
 }
@@ -44,9 +53,9 @@ type Detail struct {
 	pool         *sql.DB
 	theme        *theme.Theme
 	sessionID    string
-	events       []readstore.EventRow
+	items        []timelineItem
 	cursor       int
-	offset       int  // index of first event rendered in the visible window
+	offset       int  // index of first item rendered in the visible window
 	viewport     int  // visible row count, written by View, read by Update for page-step sizing
 	hasMore      bool
 	loadingOlder bool // guards against double-fetch when pgdn is mashed at bottom
@@ -93,7 +102,7 @@ func (m *Detail) ShortHelp() []key.Binding {
 
 // Status reports the current connection state for the footer pill.
 func (m *Detail) Status() component.Status {
-	if m.lastOK.IsZero() && len(m.events) == 0 {
+	if m.lastOK.IsZero() && len(m.items) == 0 {
 		return component.StatusNoDaemon
 	}
 	if m.stale {
@@ -102,23 +111,48 @@ func (m *Detail) Status() component.Status {
 	return component.StatusLive
 }
 
+// applyItems replaces the item list (older=false) or appends (older=true),
+// expanding the most-recent turn by default on a fresh load.
+func (m *Detail) applyItems(items []readstore.SessionItem, older bool) {
+	conv := make([]timelineItem, len(items))
+	for i, it := range items {
+		conv[i] = timelineItem{SessionItem: it}
+	}
+	if older {
+		m.items = append(m.items, conv...)
+		return
+	}
+	// Fresh load: expand only the first (most-recent) turn.
+	for i := range conv {
+		if conv[i].Kind == readstore.ItemTurn {
+			conv[i].expanded = true
+			break
+		}
+	}
+	m.items = conv
+}
+
 // Update consumes a tea.Msg and returns an updated copy of itself plus any
 // follow-on command.
 func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 	switch v := msg.(type) {
 	case app.TickMsg:
-		if m.inFlight || m.loadingOlder || m.offset > 0 || len(m.events) > detailPageSize {
+		if m.inFlight || m.loadingOlder || m.offset > 0 || len(m.items) > detailPageSize {
 			return m, nil
 		}
 		m.inFlight = true
 		return m, m.fetchCmd()
 
 	case detailDataMsg:
-		var cur readstore.EventRow
-		if m.cursor < len(m.events) {
-			cur = m.events[m.cursor]
+		// Save the current item's identity for cursor restore after refresh.
+		var curKind readstore.SessionItemKind
+		var curTSNano int64
+		if m.cursor < len(m.items) {
+			cur := m.items[m.cursor]
+			curKind = cur.Kind
+			curTSNano = cur.TS.UnixNano()
 		}
-		m.events = v.events
+		m.applyItems(v.items, false)
 		m.hasMore = v.hasMore
 		m.lastOK = v.at
 		m.inFlight = false
@@ -126,16 +160,22 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 		m.stale = false
 		m.cursor = 0
 		m.offset = 0
-		for i, e := range m.events {
-			if e.TS.Equal(cur.TS) && e.EventName == cur.EventName {
-				m.cursor = i
-				break
+		// Restore cursor: match by Kind + TS nanoseconds.
+		if curTSNano != 0 {
+			for i, it := range m.items {
+				if it.Kind == curKind && it.TS.UnixNano() == curTSNano {
+					m.cursor = i
+					break
+				}
 			}
+		}
+		if m.cursor >= len(m.items) {
+			m.cursor = max0(len(m.items) - 1)
 		}
 		return m, nil
 
 	case detailOlderMsg:
-		m.events = append(m.events, v.events...)
+		m.applyItems(v.items, true)
 		m.hasMore = v.hasMore
 		m.lastOK = v.at
 		m.loadingOlder = false
@@ -154,23 +194,23 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 				m.cursor--
 			}
 		case key.Matches(v, m.keys.Down):
-			if m.cursor < len(m.events)-1 {
+			if m.cursor < len(m.items)-1 {
 				m.cursor++
 			}
 		case key.Matches(v, m.keys.Top):
 			m.cursor = 0
 		case key.Matches(v, m.keys.Bottom):
-			m.cursor = max0(len(m.events) - 1)
+			m.cursor = max0(len(m.items) - 1)
 		case key.Matches(v, m.keys.PgDn):
 			step := m.viewport
 			if step < 1 {
 				step = 10
 			}
 			m.cursor += step
-			if m.cursor > len(m.events)-1 {
-				m.cursor = max0(len(m.events) - 1)
+			if m.cursor > len(m.items)-1 {
+				m.cursor = max0(len(m.items) - 1)
 			}
-			if m.cursor == len(m.events)-1 && m.hasMore && !m.loadingOlder {
+			if m.cursor == len(m.items)-1 && m.hasMore && !m.loadingOlder {
 				m.loadingOlder = true
 				return m, m.fetchOlderCmd()
 			}
@@ -184,10 +224,16 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 				m.cursor = 0
 			}
 		case key.Matches(v, m.keys.Enter):
-			if len(m.events) == 0 {
+			if len(m.items) == 0 {
 				return m, nil
 			}
-			row := m.events[m.cursor]
+			it := m.items[m.cursor]
+			// Enter on an event row: open prompt if it's a user_prompt with a PromptID.
+			// Enter on turn headers is implemented in Task 8.
+			if it.Kind != readstore.ItemEvent {
+				return m, nil
+			}
+			row := it.Event
 			if row.EventName != domain.EventUserPrompt || row.PromptID == "" {
 				return m, nil
 			}
@@ -203,7 +249,7 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 }
 
 // View renders the session event timeline. Renders only the visible window
-// (events[offset:offset+viewport]) and slides offset to follow the cursor.
+// (items[offset:offset+viewport]) and slides offset to follow the cursor.
 func (m *Detail) View(width, height int) string {
 	th := m.theme
 	if th == nil {
@@ -221,7 +267,7 @@ func (m *Detail) View(width, height int) string {
 	headerRight := lipgloss.NewStyle().Width(width - lipgloss.Width(brand) - lipgloss.Width(bread)).Align(lipgloss.Right).Render(pill)
 	header := lipgloss.JoinHorizontal(lipgloss.Top, brand, bread, headerRight)
 
-	if len(m.events) == 0 {
+	if len(m.items) == 0 {
 		body := th.Muted.Render("no events for this session")
 		card := component.Card(th, "", body, width)
 		help := component.HelpBar(th, m.helpHints(), width)
@@ -231,21 +277,68 @@ func (m *Detail) View(width, height int) string {
 	m.viewport = visibleRows(height)
 	clampOffset(m)
 
-	rows := []string{th.Muted.Render(fmt.Sprintf("%-8s %-22s %s", "time", "event", "summary"))}
+	// innerW: card outer = width, minus 2 border + 4 padding = content area.
+	// Rows wider than the content area get wrap artifacts on background-styled rows.
+	innerW := width - 6
+
+	// Column header aligned with TurnHeaderRow columns:
+	// glyph(2) + sep(1) + time(8) + sep(1) + label(labelHW) + sep(1) + cost(8) = innerW
+	// So labelHW = innerW - 21, and the header string is 3 + 8 + 1 + labelHW + 1 + 8 = innerW.
+	labelHW := innerW - 21
+	if labelHW < 4 {
+		labelHW = 4
+	}
+	colHdr := fmt.Sprintf("   %-8s %-*s %-8s", "time", labelHW, "turn / event", "cost")
+	rows := []string{th.Muted.Render(colHdr)}
+
 	end := m.offset + m.viewport
-	if end > len(m.events) {
-		end = len(m.events)
+	if end > len(m.items) {
+		end = len(m.items)
 	}
 	for i := m.offset; i < end; i++ {
-		e := m.events[i]
-		rd := component.EventRowData{
-			Time: e.TS, EventName: e.EventName, Summary: e.Summary,
-			IsPrompt: e.EventName == domain.EventUserPrompt && e.PromptID != "",
+		it := m.items[i]
+		switch it.Kind {
+		case readstore.ItemTurn:
+			t := it.Turn
+			label := "/" + t.CommandName
+			if t.CommandName == "" {
+				label = "prompt"
+			}
+			rd := component.TurnHeaderRowData{
+				Time:         t.StartedAt,
+				Label:        label,
+				PromptLength: t.PromptLength,
+				DurationSec:  t.DurationSec,
+				Calls:        t.APIRequests,
+				CostUSD:      t.CostUSD,
+				Expanded:     it.expanded,
+			}
+			rows = append(rows, component.TurnHeaderRow(th, rd, i == m.cursor, innerW))
+			// Children render only when expanded; currently always empty (Task 8 loads them).
+			for j, child := range it.children {
+				crd := component.TurnChildRowData{
+					Kind:         child.Kind,
+					Model:        child.Model,
+					CostUSD:      child.CostUSD,
+					InputTokens:  child.InputTokens,
+					OutputTokens: child.OutputTokens,
+					ToolName:     child.ToolName,
+					Success:      child.Success,
+					DurationMS:   child.DurationMS,
+					Last:         j == len(it.children)-1,
+				}
+				rows = append(rows, component.TurnChildRow(th, crd, innerW))
+			}
+		case readstore.ItemEvent:
+			e := it.Event
+			rd := component.EventRowData{
+				Time:      e.TS,
+				EventName: e.EventName,
+				Summary:   e.Summary,
+				IsPrompt:  false,
+			}
+			rows = append(rows, component.EventRow(th, rd, i == m.cursor, innerW))
 		}
-		// width-6: card outer = width, minus 2 border + 4 padding = content area.
-		// Rows wider than the content area get wrap artifacts on background-styled
-		// (selected / prompt) rows whose colored trailing spaces aren't trimmed.
-		rows = append(rows, component.EventRow(th, rd, i == m.cursor, width-6))
 	}
 	card := component.Card(th, "", strings.Join(rows, "\n"), width)
 
@@ -277,7 +370,6 @@ func (m *Detail) helpHints() []component.KeyHint {
 	}
 }
 
-
 func shortID(s string) string {
 	if len(s) > 8 {
 		return s[:8] + "…"
@@ -285,27 +377,27 @@ func shortID(s string) string {
 	return s
 }
 
-// fetchOlderCmd issues a keyset-paginated fetch for events strictly older
-// than the current tail (events[len-1].TS). Result is delivered as
-// detailOlderMsg and appended to m.events.
+// fetchOlderCmd issues a keyset-paginated fetch for items strictly older
+// than the current tail (items[len-1].TS). Result is delivered as
+// detailOlderMsg and appended to m.items.
 func (m *Detail) fetchOlderCmd() tea.Cmd {
 	pool := m.pool
 	sid := m.sessionID
-	if len(m.events) == 0 {
+	if len(m.items) == 0 {
 		return nil
 	}
-	before := m.events[len(m.events)-1].TS.UnixNano()
+	before := m.items[len(m.items)-1].TS.UnixNano()
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), detailFetchTimeout)
 		defer cancel()
 		if pool == nil {
 			return app.ErrMsg{Err: errNoPool}
 		}
-		rows, hasMore, err := readstore.SessionEvents(ctx, pool, sid, &before, detailPageSize)
+		items, hasMore, err := readstore.SessionTurns(ctx, pool, sid, &before, detailPageSize)
 		if err != nil {
 			return app.ErrMsg{Err: err}
 		}
-		return detailOlderMsg{events: rows, hasMore: hasMore, at: time.Now()}
+		return detailOlderMsg{items: items, hasMore: hasMore, at: time.Now()}
 	}
 }
 
@@ -318,18 +410,18 @@ func (m *Detail) fetchCmd() tea.Cmd {
 		if pool == nil {
 			return app.ErrMsg{Err: errNoPool}
 		}
-		rows, hasMore, err := readstore.SessionEvents(ctx, pool, sid, nil, detailPageSize)
+		items, hasMore, err := readstore.SessionTurns(ctx, pool, sid, nil, detailPageSize)
 		if err != nil {
 			return app.ErrMsg{Err: err}
 		}
-		return detailDataMsg{events: rows, hasMore: hasMore, at: time.Now()}
+		return detailDataMsg{items: items, hasMore: hasMore, at: time.Now()}
 	}
 }
 
 var newPromptDetail = prompt.New
 
 // visibleRows converts the terminal height passed to View into the number of
-// event rows the body can show. Reserves chromeReserved lines for the chrome
+// item rows the body can show. Reserves chromeReserved lines for the chrome
 // (title + footer), the view's own title block + column header, and the two
 // hint lines at the bottom. Falls back to a sensible default before the
 // first WindowSizeMsg.
@@ -346,7 +438,7 @@ func visibleRows(height int) int {
 }
 
 // clampOffset slides m.offset so the cursor is in the visible window and the
-// window itself stays within the loaded events range.
+// window itself stays within the loaded items range.
 func clampOffset(m *Detail) {
 	if m.cursor < m.offset {
 		m.offset = m.cursor
@@ -357,7 +449,7 @@ func clampOffset(m *Detail) {
 	if m.offset < 0 {
 		m.offset = 0
 	}
-	maxOffset := len(m.events) - 1
+	maxOffset := len(m.items) - 1
 	if maxOffset < 0 {
 		maxOffset = 0
 	}

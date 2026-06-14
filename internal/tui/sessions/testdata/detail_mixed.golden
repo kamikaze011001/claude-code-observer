@@ -1,7 +1,7 @@
 ✦ cco · session abcdef12…                                                                    ● LIVE 
 
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
-│  time     event                  summary                                                         │
+│     time     turn / event                                                              cost      │
 │  12:43:01 user_prompt            prompt: 142ch /commit                                           │
 │  12:43:02 tool_result            Read 12ms                                                       │
 │  12:43:03 api_request            claude-opus-4-7 $0.0021                                         │

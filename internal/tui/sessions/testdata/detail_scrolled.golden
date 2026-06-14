@@ -1,7 +1,7 @@
 ✦ cco · session abcdef12…                                                                    ● LIVE 
 
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
-│  time     event                  summary                                                         │
+│     time     turn / event                                                              cost      │
 │  12:00:16 tool_result            Read 1ms                                                        │
 │  12:00:17 tool_result            Read 1ms                                                        │
 │  12:00:18 tool_result            Read 1ms                                                        │
