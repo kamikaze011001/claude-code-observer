@@ -1,7 +1,7 @@
 ✦ cco · session a3f9c1b1…                                                          ● LIVE 
 
 ╭────────────────────────────────────────────────────────────────────────────────────────╮
-│  time     event                  summary                                               │
+│     time     turn / event                                                    cost      │
 │  09:14:02 session_lifecycle      started                                               │
 │  09:14:08 user_prompt            "refactor receiver pipeline"                          │
 │  09:14:09 api_request            opus-4-7  $0.12 · 8k/3k                               │
@@ -9,4 +9,4 @@
 │  09:14:11 tool_result            Read ✓ 42ms                                           │
 ╰────────────────────────────────────────────────────────────────────────────────────────╯
 
-↑↓ nav  ⏎ open prompt  u/d scroll  b back  ? about  q quit                                
+↑↓ nav  space expand  ⏎ open prompt  u/d scroll  b back  ? about  q quit                  

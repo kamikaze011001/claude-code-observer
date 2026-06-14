@@ -713,3 +713,218 @@ func TestRecentSessionsToday_LocalMidnight(t *testing.T) {
 		t.Errorf("today sessions: got %d want %d", got, want)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// SessionTurns tests
+// ---------------------------------------------------------------------------
+
+func TestSessionTurns_InterleavesAndPaginates(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	ctx := context.Background()
+
+	// Insert parent session (FK enforcement is ON).
+	_, err = repo.DB().ExecContext(ctx,
+		`INSERT INTO sessions(session_id, started_at, last_seen_at) VALUES ('s1', 1000, 4000)`)
+	if err != nil {
+		t.Fatalf("session insert: %v", err)
+	}
+
+	// Two prompt rollups — p1 starts at ts=1000, p2 starts at ts=3000.
+	_, err = repo.DB().ExecContext(ctx,
+		`INSERT INTO prompts(prompt_id,session_id,started_at,ended_at,prompt_length,command_name,cost_usd,input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,api_requests,subagent_requests,tool_calls,had_error)
+		 VALUES ('p1','s1',1000,2000,412,'refactor',0.036,6000,1338,0,0,3,0,2,0)`)
+	if err != nil {
+		t.Fatalf("p1 insert: %v", err)
+	}
+	_, err = repo.DB().ExecContext(ctx,
+		`INSERT INTO prompts(prompt_id,session_id,started_at,ended_at,prompt_length,command_name,cost_usd,input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,api_requests,subagent_requests,tool_calls,had_error)
+		 VALUES ('p2','s1',3000,4000,220,'explain',0.002,300,88,0,0,1,0,0,0)`)
+	if err != nil {
+		t.Fatalf("p2 insert: %v", err)
+	}
+
+	// One session-level event (prompt_id NULL) at ts=2500 — between the two turns.
+	_, err = repo.DB().ExecContext(ctx,
+		`INSERT INTO events(ts,session_id,prompt_id,event_name,attrs)
+		 VALUES (2500,'s1',NULL,'mcp_server_connection','{"server_name":"x","state":"connected"}')`)
+	if err != nil {
+		t.Fatalf("event insert: %v", err)
+	}
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	items, more, err := readstore.SessionTurns(ctx, pool, "s1", nil, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if more {
+		t.Errorf("hasMore=true want false")
+	}
+	if len(items) != 3 {
+		t.Fatalf("len=%d want 3", len(items))
+	}
+	// Newest-first: p2 (ts=3000), event (ts=2500), p1 (ts=1000).
+	if items[0].Kind != readstore.ItemTurn || items[0].Turn.PromptID != "p2" {
+		t.Errorf("item0=%+v want turn p2", items[0])
+	}
+	if items[1].Kind != readstore.ItemEvent || items[1].Event.EventName != "mcp_server_connection" {
+		t.Errorf("item1=%+v want mcp event", items[1])
+	}
+	if items[2].Kind != readstore.ItemTurn || items[2].Turn.PromptID != "p1" {
+		t.Errorf("item2=%+v want turn p1", items[2])
+	}
+	if items[2].Turn.CostUSD != 0.036 {
+		t.Errorf("p1 cost=%v want 0.036", items[2].Turn.CostUSD)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SessionTurnChildren tests
+// ---------------------------------------------------------------------------
+
+func TestSessionTurnChildren_OrdersAndTypes(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	ctx := context.Background()
+
+	// Insert events directly — events table has no FK constraint to prompts,
+	// so no parent session or prompt row is needed.
+	_, err = repo.DB().ExecContext(ctx,
+		`INSERT INTO events(ts,session_id,prompt_id,event_name,attrs)
+		 VALUES (1100,'s1','p1','api_request','{"model":"claude-opus-4-8","cost_usd":0.004,"input_tokens":1200,"output_tokens":340}')`)
+	if err != nil {
+		t.Fatalf("api_request insert: %v", err)
+	}
+	_, err = repo.DB().ExecContext(ctx,
+		`INSERT INTO events(ts,session_id,prompt_id,event_name,attrs)
+		 VALUES (1200,'s1','p1','tool_result','{"tool_name":"Read","duration_ms":"38","success":"true"}')`)
+	if err != nil {
+		t.Fatalf("tool_result insert: %v", err)
+	}
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	children, err := readstore.SessionTurnChildren(ctx, pool, "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(children) != 2 {
+		t.Fatalf("len=%d want 2", len(children))
+	}
+	if children[0].Kind != "api" || children[0].CostUSD != 0.004 {
+		t.Errorf("child0=%+v want api 0.004", children[0])
+	}
+	if children[1].Kind != "tool" || children[1].ToolName != "Read" || !children[1].Success {
+		t.Errorf("child1=%+v want tool Read ok", children[1])
+	}
+
+	// Empty case: a promptID with no children returns empty slice, nil error.
+	empty, err := readstore.SessionTurnChildren(ctx, pool, "no-such-prompt")
+	if err != nil {
+		t.Fatalf("empty case err: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("empty case: len=%d want 0", len(empty))
+	}
+}
+
+func TestSessionTurns_KeysetPagination(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	ctx := context.Background()
+
+	_, err = repo.DB().ExecContext(ctx,
+		`INSERT INTO sessions(session_id, started_at, last_seen_at) VALUES ('s2', 1000, 6000)`)
+	if err != nil {
+		t.Fatalf("session insert: %v", err)
+	}
+
+	// Three prompts with distinct started_at values (nanoseconds).
+	for _, p := range []struct {
+		id string
+		ts int64
+	}{
+		{"pa", 1000}, {"pb", 3000}, {"pc", 5000},
+	} {
+		_, err = repo.DB().ExecContext(ctx,
+			`INSERT INTO prompts(prompt_id,session_id,started_at,cost_usd,input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,api_requests,subagent_requests,tool_calls,had_error)
+			 VALUES (?,?,?,0,0,0,0,0,0,0,0,0)`,
+			p.id, "s2", p.ts)
+		if err != nil {
+			t.Fatalf("prompt %s insert: %v", p.id, err)
+		}
+	}
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	// Page 1: limit=2 → newest two (pc at 5000, pb at 3000), hasMore=true.
+	page1, more1, err := readstore.SessionTurns(ctx, pool, "s2", nil, 2)
+	if err != nil {
+		t.Fatalf("page1: %v", err)
+	}
+	if !more1 {
+		t.Errorf("page1: hasMore=false want true")
+	}
+	if len(page1) != 2 {
+		t.Fatalf("page1: len=%d want 2", len(page1))
+	}
+	if page1[0].Turn.PromptID != "pc" || page1[1].Turn.PromptID != "pb" {
+		t.Errorf("page1 order wrong: got %s, %s", page1[0].Turn.PromptID, page1[1].Turn.PromptID)
+	}
+
+	// Page 2: cursor at ts of last item on page 1 → only pa (ts=1000), hasMore=false.
+	cursor := page1[len(page1)-1].TS.UnixNano()
+	page2, more2, err := readstore.SessionTurns(ctx, pool, "s2", &cursor, 2)
+	if err != nil {
+		t.Fatalf("page2: %v", err)
+	}
+	if more2 {
+		t.Errorf("page2: hasMore=true want false")
+	}
+	if len(page2) != 1 {
+		t.Fatalf("page2: len=%d want 1", len(page2))
+	}
+	if page2[0].Turn.PromptID != "pa" {
+		t.Errorf("page2 item wrong: got %s want pa", page2[0].Turn.PromptID)
+	}
+
+	// No overlap across pages.
+	seen := map[string]bool{}
+	for _, item := range append(page1, page2...) {
+		if seen[item.Turn.PromptID] {
+			t.Fatalf("duplicate prompt in pages: %s", item.Turn.PromptID)
+		}
+		seen[item.Turn.PromptID] = true
+	}
+	if len(seen) != 3 {
+		t.Errorf("expected 3 distinct prompts across pages, got %d", len(seen))
+	}
+}

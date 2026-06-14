@@ -455,6 +455,234 @@ ORDER BY ts`, promptID)
 	return out, nil
 }
 
+// SessionItemKind distinguishes the two row types returned by SessionTurns.
+type SessionItemKind int
+
+const (
+	ItemTurn  SessionItemKind = iota // a prompt rollup row
+	ItemEvent                        // a session-level (no prompt_id) event row
+)
+
+// TurnHeader carries the fields from the prompts rollup table that the
+// session detail view displays per-turn.
+type TurnHeader struct {
+	PromptID     string
+	StartedAt    time.Time
+	EndedAt      time.Time // zero when the turn is still open
+	DurationSec  int64
+	CommandName  string
+	PromptLength int64
+	CostUSD      float64
+	APIRequests  int64
+	ToolCalls    int64
+}
+
+// SessionItem is one element in the interleaved timeline returned by
+// SessionTurns. Kind tells the caller which union member is populated.
+type SessionItem struct {
+	Kind  SessionItemKind
+	Turn  TurnHeader // valid when Kind == ItemTurn
+	Event EventRow   // valid when Kind == ItemEvent
+	TS    time.Time  // sort key (equals Turn.StartedAt or Event.TS)
+}
+
+// SessionTurns returns one page of the session's interleaved timeline:
+// prompt rollups ("turns") from the prompts table and session-level events
+// (prompt_id IS NULL or '') from the events table, merged via UNION ALL and
+// ordered newest-first. beforeTS is a nanosecond keyset cursor — pass nil
+// for the first page. hasMore is true when len(items) == limit, indicating
+// there are more rows to fetch.
+//
+// Keyset tie note: the ts < ? predicate assumes distinct timestamps. Two rows
+// sharing an identical nanosecond ts on a page boundary could be silently
+// dropped; this is acceptable because timestamps are UnixNano() and collisions
+// are practically impossible.
+func SessionTurns(ctx context.Context, db *sql.DB, sessionID string, beforeTS *int64, limit int) ([]SessionItem, bool, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	const q = `
+SELECT kind, ts, prompt_id, started_at, ended_at, prompt_length, command_name,
+       cost_usd, api_requests, tool_calls, event_name, attrs
+FROM (
+  SELECT 'turn'   AS kind,
+         started_at AS ts,
+         prompt_id,
+         started_at,
+         ended_at,
+         COALESCE(prompt_length, 0) AS prompt_length,
+         COALESCE(command_name, '')  AS command_name,
+         cost_usd,
+         api_requests,
+         tool_calls,
+         NULL AS event_name,
+         NULL AS attrs
+  FROM prompts
+  WHERE session_id = ?
+  UNION ALL
+  SELECT 'event'  AS kind,
+         ts,
+         NULL AS prompt_id,
+         NULL AS started_at,
+         NULL AS ended_at,
+         0    AS prompt_length,
+         ''   AS command_name,
+         0    AS cost_usd,
+         0    AS api_requests,
+         0    AS tool_calls,
+         event_name,
+         attrs
+  FROM events
+  WHERE session_id = ?
+    AND (prompt_id IS NULL OR prompt_id = '')
+)
+WHERE (? IS NULL OR ts < ?)
+ORDER BY ts DESC
+LIMIT ?`
+
+	var cur sql.NullInt64
+	if beforeTS != nil {
+		cur = sql.NullInt64{Int64: *beforeTS, Valid: true}
+	}
+	rows, err := db.QueryContext(ctx, q, sessionID, sessionID, cur, cur, limit)
+	if err != nil {
+		return nil, false, fmt.Errorf("session turns: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]SessionItem, 0, limit)
+	for rows.Next() {
+		var (
+			kind        string
+			ts          int64
+			promptID    sql.NullString
+			startedAt   sql.NullInt64
+			endedAt     sql.NullInt64
+			promptLen   int64
+			commandName string
+			costUSD     float64
+			apiReqs     int64
+			toolCalls   int64
+			eventName   sql.NullString
+			attrs       []byte
+		)
+		if err := rows.Scan(
+			&kind, &ts, &promptID, &startedAt, &endedAt,
+			&promptLen, &commandName, &costUSD, &apiReqs, &toolCalls,
+			&eventName, &attrs,
+		); err != nil {
+			return nil, false, fmt.Errorf("session turns scan: %w", err)
+		}
+		item := SessionItem{TS: time.Unix(0, ts).Local()}
+		switch kind {
+		case "turn":
+			item.Kind = ItemTurn
+			th := TurnHeader{
+				PromptID:     promptID.String,
+				PromptLength: promptLen,
+				CommandName:  commandName,
+				CostUSD:      costUSD,
+				APIRequests:  apiReqs,
+				ToolCalls:    toolCalls,
+			}
+			if startedAt.Valid {
+				th.StartedAt = time.Unix(0, startedAt.Int64).Local()
+			}
+			if endedAt.Valid {
+				th.EndedAt = time.Unix(0, endedAt.Int64).Local()
+				th.DurationSec = (endedAt.Int64 - startedAt.Int64) / int64(time.Second)
+			}
+			item.Turn = th
+		case "event":
+			item.Kind = ItemEvent
+			item.Event = EventRow{
+				TS:        item.TS,
+				EventName: eventName.String,
+				Summary:   summarize(eventName.String, attrs),
+			}
+		default:
+			return nil, false, fmt.Errorf("session turns: unexpected kind %q", kind)
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("session turns iter: %w", err)
+	}
+	return out, len(out) == limit, nil
+}
+
+// TurnChild is one api_request or tool_result event under a turn, normalized
+// for inline rendering. Kind is "api" or "tool".
+type TurnChild struct {
+	TS           time.Time
+	Kind         string
+	Model        string
+	CostUSD      float64
+	InputTokens  int64
+	OutputTokens int64
+	ToolName     string
+	Success      bool
+	DurationMS   int64
+}
+
+// SessionTurnChildren returns the api_request and tool_result events for a
+// prompt, ordered ascending by ts. Empty slice (not error) when none.
+func SessionTurnChildren(ctx context.Context, db *sql.DB, promptID string) ([]TurnChild, error) {
+	rows, err := db.QueryContext(ctx, `
+SELECT ts, event_name, attrs
+FROM events
+WHERE prompt_id = ? AND event_name IN ('api_request','tool_result')
+ORDER BY ts`, promptID)
+	if err != nil {
+		return nil, fmt.Errorf("turn children: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]TurnChild, 0)
+	for rows.Next() {
+		var (
+			ts        int64
+			eventName string
+			attrs     []byte
+		)
+		if err := rows.Scan(&ts, &eventName, &attrs); err != nil {
+			return nil, fmt.Errorf("turn children scan: %w", err)
+		}
+		var a map[string]any
+		_ = json.Unmarshal(attrs, &a)
+		c := TurnChild{TS: time.Unix(0, ts).Local()}
+		switch eventName {
+		case domain.EventAPIRequest:
+			c.Kind = "api"
+			c.Model, _ = a["model"].(string)
+			if v, ok := a["cost_usd"].(float64); ok {
+				c.CostUSD = v
+			}
+			if v, ok := a["input_tokens"].(float64); ok {
+				c.InputTokens = int64(v)
+			}
+			if v, ok := a["output_tokens"].(float64); ok {
+				c.OutputTokens = int64(v)
+			}
+		case domain.EventToolResult:
+			c.Kind = "tool"
+			c.ToolName, _ = a["tool_name"].(string)
+			// tool_result emits duration_ms/success as quoted strings — coerce via helpers.
+			if v, ok := attrInt(a, "duration_ms"); ok {
+				c.DurationMS = v
+			}
+			if v, ok := attrBool(a, "success"); ok {
+				c.Success = v
+			}
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("turn children iter: %w", err)
+	}
+	return out, nil
+}
+
 // WaterfallRequest is one api_request or api_error event under a prompt,
 // carrying the fields the waterfall view needs. TS is the event timestamp
 // (fired at stream-end); the request start is TS - DurationMS.

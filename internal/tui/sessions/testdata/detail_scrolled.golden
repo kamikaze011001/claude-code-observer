@@ -1,7 +1,7 @@
 ✦ cco · session abcdef12…                                                                    ● LIVE 
 
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
-│  time     event                  summary                                                         │
+│     time     turn / event                                                              cost      │
 │  12:00:16 tool_result            Read 1ms                                                        │
 │  12:00:17 tool_result            Read 1ms                                                        │
 │  12:00:18 tool_result            Read 1ms                                                        │
@@ -10,4 +10,4 @@
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 press d for older events
 
-↑↓ nav  ⏎ open prompt  u/d scroll  b back  ? about  q quit                                          
+↑↓ nav  space expand  ⏎ open prompt  u/d scroll  b back  ? about  q quit                            
