@@ -346,6 +346,10 @@ func (m *Detail) View(width, height int) string {
 				if budget <= 0 {
 					break
 				}
+				// budget==1 means this is the last row we can render: treat it
+				// as the visual tail so TurnChildRow draws the ╰ connector even
+				// when the real child list continues beyond the budget.
+				isLast := j == len(it.children)-1 || budget == 1
 				crd := component.TurnChildRowData{
 					Kind:         child.Kind,
 					Model:        child.Model,
@@ -355,7 +359,7 @@ func (m *Detail) View(width, height int) string {
 					ToolName:     child.ToolName,
 					Success:      child.Success,
 					DurationMS:   child.DurationMS,
-					Last:         j == len(it.children)-1,
+					Last:         isLast,
 				}
 				rows = append(rows, component.TurnChildRow(th, crd, innerW))
 				budget--
@@ -489,15 +493,47 @@ func visibleRows(height int) int {
 	return v
 }
 
+// itemRows reports how many rendered rows an item occupies: a turn header plus
+// its children when expanded (children are empty until lazily loaded), otherwise
+// a single row. Mirrors the row-budget accounting in View.
+func itemRows(it timelineItem) int {
+	if it.Kind == readstore.ItemTurn && it.expanded {
+		return 1 + len(it.children)
+	}
+	return 1
+}
+
 // clampOffset slides m.offset so the cursor is in the visible window and the
 // window itself stays within the loaded items range.
+//
+// Note: clampOffset is only called from View after the early-return for empty
+// items, so len(m.items) > 0 is guaranteed here.
 func clampOffset(m *Detail) {
+	// Scrolling up: ensure cursor is not above the visible window.
 	if m.cursor < m.offset {
 		m.offset = m.cursor
 	}
-	if m.cursor >= m.offset+m.viewport {
-		m.offset = m.cursor - m.viewport + 1
+
+	// Scrolling down: walk up from the cursor accumulating rendered rows until
+	// the budget (m.viewport) is reached, so the cursor item's header is
+	// guaranteed to render even when an expanded turn above it would otherwise
+	// consume the entire budget.
+	if m.cursor >= m.offset {
+		rowsUsed := 1 // the cursor item's own header row
+		newOffset := m.cursor
+		for i := m.cursor - 1; i >= m.offset; i-- {
+			r := itemRows(m.items[i])
+			if rowsUsed+r > m.viewport {
+				break
+			}
+			rowsUsed += r
+			newOffset = i
+		}
+		if newOffset > m.offset {
+			m.offset = newOffset
+		}
 	}
+
 	if m.offset < 0 {
 		m.offset = 0
 	}

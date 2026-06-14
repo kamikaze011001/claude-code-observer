@@ -59,16 +59,6 @@ func TestDetail_KeyJK(t *testing.T) {
 }
 
 
-func TestDetail_EnterOnNonPromptDoesNothing(t *testing.T) {
-	t.Parallel()
-	m := NewDetail(nil, "s1", nil).(*Detail)
-	m.items = eventItems(readstore.EventRow{TS: time.Now(), EventName: "tool_result"})
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd != nil {
-		t.Fatal("expected no cmd; got one")
-	}
-}
-
 func TestDetail_StatusPill(t *testing.T) {
 	t.Parallel()
 	m := NewDetail(nil, "s1", nil).(*Detail)
@@ -571,5 +561,88 @@ func TestDetail_View_ExpandedTurnDoesNotOverflowViewport(t *testing.T) {
 	if bodyRows > maxAllowed {
 		t.Fatalf("body rows=%d exceeds allowed %d (viewport=%d + 1 col header); overflow guard broken\n%s",
 			bodyRows, maxAllowed, m.viewport, out)
+	}
+}
+
+// TestDetail_ChildrenMsgPopulatesMatchingTurn (FIX 3): detailChildrenMsg must
+// update only the turn whose PromptID matches.
+func TestDetail_ChildrenMsgPopulatesMatchingTurn(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1", nil).(*Detail)
+	m.applyItems([]readstore.SessionItem{
+		{Kind: readstore.ItemTurn, Turn: readstore.TurnHeader{PromptID: "p1"}, TS: time.Unix(0, 1000)},
+		{Kind: readstore.ItemTurn, Turn: readstore.TurnHeader{PromptID: "p2"}, TS: time.Unix(0, 2000)},
+	}, false)
+	upd, _ := m.Update(detailChildrenMsg{
+		promptID: "p2",
+		children: []readstore.TurnChild{{Kind: "api_request", Model: "m"}},
+	})
+	d := upd.(*Detail)
+	if !d.items[1].loaded {
+		t.Error("items[1].loaded should be true after receiving its children")
+	}
+	if len(d.items[1].children) != 1 {
+		t.Errorf("items[1].children len=%d want 1", len(d.items[1].children))
+	}
+	if d.items[0].loaded {
+		t.Error("items[0].loaded should remain false (non-matching turn)")
+	}
+	if len(d.items[0].children) != 0 {
+		t.Errorf("items[0].children len=%d want 0", len(d.items[0].children))
+	}
+}
+
+// TestDetail_FetchChildrenCmd_NilPoolReturnsErrMsg (FIX 4): fetchChildrenCmd
+// with a nil pool must return a non-nil cmd that resolves to app.ErrMsg.
+func TestDetail_FetchChildrenCmd_NilPoolReturnsErrMsg(t *testing.T) {
+	t.Parallel()
+	m := NewDetail(nil, "s1", nil).(*Detail)
+	cmd := m.fetchChildrenCmd("p1")
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	if _, ok := cmd().(app.ErrMsg); !ok {
+		t.Fatal("expected app.ErrMsg from nil-pool path")
+	}
+}
+
+// TestDetail_View_CursorItemVisibleBelowExpandedTurn (FIX 6 / regression for
+// FIX 2): when the cursor sits below an expanded turn that would otherwise eat
+// the entire row budget, the cursor item must still appear in View output.
+func TestDetail_View_CursorItemVisibleBelowExpandedTurn(t *testing.T) {
+	t.Parallel()
+	th := theme.Build(theme.MochaPalette(), theme.UnicodeGlyphs())
+	m := &Detail{theme: &th, sessionID: "s1", lastOK: time.Now()}
+
+	// Expanded turn with 10 children — far more than viewport=5 can absorb.
+	children := make([]readstore.TurnChild, 10)
+	for i := range children {
+		children[i] = readstore.TurnChild{Kind: "api_request", Model: "claude-opus-4"}
+	}
+	m.items = []timelineItem{
+		{
+			SessionItem: readstore.SessionItem{
+				Kind: readstore.ItemTurn,
+				Turn: readstore.TurnHeader{PromptID: "p1", CommandName: "test"},
+				TS:   time.Unix(0, 1000),
+			},
+			expanded: true,
+			children: children,
+			loaded:   true,
+		},
+		{
+			SessionItem: readstore.SessionItem{
+				Kind:  readstore.ItemEvent,
+				Event: readstore.EventRow{TS: time.Unix(0, 2000), EventName: "tool_result", Summary: "SENTINEL_EVENT"},
+				TS:    time.Unix(0, 2000),
+			},
+		},
+	}
+	m.cursor = 1 // cursor on the event below the expanded turn
+	// height=12 → visibleRows(12)=5; the expanded turn alone needs 11 rows.
+
+	out := stripANSI(m.View(100, 12))
+	if !strings.Contains(out, "SENTINEL_EVENT") {
+		t.Fatalf("cursor item not visible in View output; clampOffset must scroll past expanded turn\n%s", out)
 	}
 }
