@@ -36,11 +36,14 @@ read-side / TUI-only change. The waterfall view is untouched.
 A single tiering function maps a USD amount to a theme color, used everywhere a per-call or
 per-turn cost is rendered:
 
-| Tier    | Range          | Color (Mocha) |
+| Tier    | Range          | Palette color |
 |---------|----------------|---------------|
-| cheap   | `< $0.01`      | green         |
-| notable | `$0.01–$0.05`  | yellow        |
-| heavy   | `> $0.05`      | peach         |
+| cheap   | `< $0.01`      | Green         |
+| notable | `$0.01–$0.05`  | Yellow        |
+| heavy   | `> $0.05`      | Red           |
+
+(The Catppuccin palette in this project exposes Green/Yellow/Red — the universal
+green→yellow→red heatmap — not "peach". Heavy spend reads as Red.)
 
 - **Absolute tiers** (not relative-to-session) so users build intuition for real cents over
   time. Thresholds are constants in one place, tunable later.
