@@ -1079,6 +1079,71 @@ func TestSessionHeader_NotFound(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// ProductivityByDay tests
+// ---------------------------------------------------------------------------
+
+func TestProductivityByDay(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	day1 := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC).UnixNano()
+	day1b := time.Date(2026, 6, 13, 15, 0, 0, 0, time.UTC).UnixNano()
+	day2 := time.Date(2026, 6, 14, 8, 0, 0, 0, time.UTC).UnixNano()
+
+	_, err = repo.DB().ExecContext(context.Background(),
+		`INSERT INTO sessions (session_id, started_at, last_seen_at, lines_added, commits, edits_accepted, edits_rejected)
+		 VALUES ('a', ?, ?, 100, 1, 8, 2),
+		        ('b', ?, ?, 50,  0, 4, 0),
+		        ('c', ?, ?, 30,  2, 1, 1)`,
+		day1, day1,
+		day1b, day1b,
+		day2, day2)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	rows, err := readstore.ProductivityByDay(context.Background(), pool, 30, time.UTC)
+	if err != nil {
+		t.Fatalf("ProductivityByDay: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows: got %d want 2; %+v", len(rows), rows)
+	}
+	// Newest first: rows[0] = 2026-06-14, rows[1] = 2026-06-13
+	if rows[0].Day != "2026-06-14" {
+		t.Errorf("rows[0].Day = %q, want 2026-06-14", rows[0].Day)
+	}
+	if rows[0].LinesAdded != 30 {
+		t.Errorf("rows[0].LinesAdded = %d, want 30", rows[0].LinesAdded)
+	}
+	if rows[0].Commits != 2 {
+		t.Errorf("rows[0].Commits = %d, want 2", rows[0].Commits)
+	}
+	if rows[1].Day != "2026-06-13" {
+		t.Errorf("rows[1].Day = %q, want 2026-06-13", rows[1].Day)
+	}
+	if rows[1].LinesAdded != 150 {
+		t.Errorf("rows[1].LinesAdded = %d, want 150 (100+50)", rows[1].LinesAdded)
+	}
+	if rows[1].Commits != 1 {
+		t.Errorf("rows[1].Commits = %d, want 1", rows[1].Commits)
+	}
+	if rows[1].Sessions != 2 {
+		t.Errorf("rows[1].Sessions = %d, want 2", rows[1].Sessions)
+	}
+}
+
 func TestSessionTurns_KeysetPagination(t *testing.T) {
 	home := t.TempDir()
 	repo, err := repository.Open(home)

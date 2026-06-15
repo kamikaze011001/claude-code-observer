@@ -746,6 +746,62 @@ ORDER BY ts`, promptID)
 	return out, nil
 }
 
+// ProductivityDay is one calendar day's productivity totals.
+type ProductivityDay struct {
+	Day           string // "2006-01-02" in the given location
+	Sessions      int64
+	LinesAdded    int64
+	LinesRemoved  int64
+	Commits       int64
+	PullRequests  int64
+	ActiveSec     int64
+	EditsAccepted int64
+	EditsRejected int64
+}
+
+// ProductivityByDay returns up to `days` of per-day productivity totals, newest
+// day first, grouped by the local calendar day of started_at. loc determines day
+// boundaries (time.Local in app, time.UTC in tests).
+func ProductivityByDay(ctx context.Context, db *sql.DB, days int, loc *time.Location) ([]ProductivityDay, error) {
+	if days <= 0 {
+		days = 30
+	}
+	_, offset := time.Now().In(loc).Zone()
+	const q = `
+SELECT
+  strftime('%Y-%m-%d', (started_at/1000000000) + ?, 'unixepoch') AS day,
+  COUNT(*),
+  COALESCE(SUM(lines_added), 0),
+  COALESCE(SUM(lines_removed), 0),
+  COALESCE(SUM(commits), 0),
+  COALESCE(SUM(pull_requests), 0),
+  COALESCE(SUM(active_seconds), 0),
+  COALESCE(SUM(edits_accepted), 0),
+  COALESCE(SUM(edits_rejected), 0)
+FROM sessions
+GROUP BY day
+ORDER BY day DESC
+LIMIT ?`
+	rows, err := db.QueryContext(ctx, q, offset, days)
+	if err != nil {
+		return nil, fmt.Errorf("productivity by day: %w", err)
+	}
+	defer rows.Close()
+	out := make([]ProductivityDay, 0, days)
+	for rows.Next() {
+		var d ProductivityDay
+		if err := rows.Scan(&d.Day, &d.Sessions, &d.LinesAdded, &d.LinesRemoved,
+			&d.Commits, &d.PullRequests, &d.ActiveSec, &d.EditsAccepted, &d.EditsRejected); err != nil {
+			return nil, fmt.Errorf("productivity day scan: %w", err)
+		}
+		out = append(out, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("productivity day iter: %w", err)
+	}
+	return out, nil
+}
+
 // WaterfallRequest is one api_request or api_error event under a prompt,
 // carrying the fields the waterfall view needs. TS is the event timestamp
 // (fired at stream-end); the request start is TS - DurationMS.
