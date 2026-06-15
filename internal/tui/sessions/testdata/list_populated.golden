@@ -1,10 +1,10 @@
 ✦ cco · sessions    page 1                                                         ● LIVE 
 
 ╭────────────────────────────────────────────────────────────────────────────────────────╮
-│  #    started            project  duration   cost     spend prompts  tokens  status    │
-│  1    2026-05-11 09:14   claude-… 1h12m      $1.12    █████ 12       38k      ● LIVE   │
-│  2    2026-05-11 08:02   cco-fro… 45m32s     $0.81    ████░ 7        24k               │
-│  3    2026-05-11 07:30   日本語…  22m18s     $0.42    ██░░░ 5        15k               │
+│  #    started            p… duration   cost      prompts  tokens  lines      status    │
+│  1    2026-05-11 09:14   c… 1h12m      $1.12     12       38k     +0 -0       ● LIVE   │
+│  2    2026-05-11 08:02   c… 45m32s     $0.81     7        24k     +0 -0                │
+│  3    2026-05-11 07:30   …  22m18s     $0.42     5        15k     +0 -0                │
 ╰────────────────────────────────────────────────────────────────────────────────────────╯
 
 ↑↓ nav  ⏎ open  d next  u prev  g/G top/bot  b back  ? about  q quit                      

@@ -222,15 +222,17 @@ func (m *List) View(width, height int) string {
 	}
 	for i, r := range m.rows {
 		rd := component.SessionRowData{
-			Index:       i + 1,
-			Started:     r.StartedAt,
-			ProjectName: defaultProject(r.ProjectName),
-			DurationSec: r.DurationSec,
-			CostUSD:     r.CostUSD,
-			MaxCostUSD:  maxCost,
-			Prompts:     r.Prompts,
-			Tokens:      r.Tokens,
-			Live:        r.Live,
+			Index:        i + 1,
+			Started:      r.StartedAt,
+			ProjectName:  defaultProject(r.ProjectName),
+			DurationSec:  r.DurationSec,
+			CostUSD:      r.CostUSD,
+			MaxCostUSD:   maxCost,
+			Prompts:      r.Prompts,
+			Tokens:       r.Tokens,
+			LinesAdded:   r.LinesAdded,
+			LinesRemoved: r.LinesRemoved,
+			Live:         r.Live,
 		}
 		rows = append(rows, component.SessionRow(th, rd, i == m.cursor, inner))
 	}
@@ -253,6 +255,13 @@ func (m *List) helpHints() []component.KeyHint {
 	}
 }
 
+// linesCell renders "+1.2k -340" with added in green, removed in red.
+func linesCell(t *theme.Theme, added, removed int64) string {
+	add := lipgloss.NewStyle().Foreground(t.Palette.Green).Render("+" + component.HumanInt(added))
+	rem := lipgloss.NewStyle().Foreground(t.Palette.Red).Render("-" + component.HumanInt(removed))
+	return add + " " + rem
+}
+
 func defaultProject(s string) string {
 	if s == "" {
 		return "(unlabeled)"
@@ -263,7 +272,7 @@ func defaultProject(s string) string {
 func formatColHeader(w int) string {
 	// Column widths come from component package — single source of truth shared
 	// with SessionRow so headers and rows always stay aligned.
-	projW := w - component.ColIdxW - component.ColStartW - component.ColDurW - component.ColCostW - component.ColBarW - component.ColPrW - component.ColTokW - component.ColLiveW - component.ColGutterCount
+	projW := w - component.ColIdxW - component.ColStartW - component.ColDurW - component.ColCostW - component.ColBarW - component.ColPrW - component.ColTokW - component.ColLinesW - component.ColLiveW - component.ColGutterCount
 	effectiveBarW := component.ColBarW
 
 	// Mirror SessionRow's bar-shrinks-first logic exactly.
@@ -276,7 +285,7 @@ func formatColHeader(w int) string {
 		projW = component.ProjMinW
 	}
 	// Safety clamp: keep content within w when bar is fully consumed.
-	maxProjW := w - component.ColIdxW - component.ColStartW - component.ColDurW - component.ColCostW - effectiveBarW - component.ColPrW - component.ColTokW - component.ColLiveW - component.ColGutterCount
+	maxProjW := w - component.ColIdxW - component.ColStartW - component.ColDurW - component.ColCostW - effectiveBarW - component.ColPrW - component.ColTokW - component.ColLinesW - component.ColLiveW - component.ColGutterCount
 	if maxProjW < projW {
 		projW = maxProjW
 		if projW < 0 {
@@ -286,15 +295,21 @@ func formatColHeader(w int) string {
 
 	// Use the same truncation helper as SessionRow for consistency.
 	projLabel := component.TruncToWidth("project", projW)
-	return fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s",
+	// When the bar shrinks to 0, pass "" so %-0s emits nothing (not "spend").
+	spendLabel := "spend"
+	if effectiveBarW == 0 {
+		spendLabel = ""
+	}
+	return fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s",
 		component.ColIdxW, "#",
 		component.ColStartW, "started",
 		projW, projLabel,
 		component.ColDurW, "duration",
 		component.ColCostW, "cost",
-		effectiveBarW, "spend",
+		effectiveBarW, spendLabel,
 		component.ColPrW, "prompts",
 		component.ColTokW, "tokens",
+		component.ColLinesW, "lines",
 		component.ColLiveW, "status",
 	)
 }
