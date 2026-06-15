@@ -349,6 +349,41 @@ LIMIT ?`
 // ErrNotFound is returned when a lookup-by-id query finds no row.
 var ErrNotFound = errors.New("readstore: not found")
 
+// SessionHeader is the per-session productivity summary shown atop the detail view.
+type SessionHeader struct {
+	SessionID     string
+	ProjectName   string
+	LinesAdded    int64
+	LinesRemoved  int64
+	Commits       int64
+	PullRequests  int64
+	ActiveSec     int64
+	EditsAccepted int64
+	EditsRejected int64
+}
+
+// SessionHeaderRow loads the productivity summary for one session.
+func SessionHeaderRow(ctx context.Context, db *sql.DB, sessionID string) (SessionHeader, error) {
+	const q = `
+SELECT session_id, COALESCE(project_name, ''),
+       lines_added, lines_removed, commits, pull_requests,
+       active_seconds, edits_accepted, edits_rejected
+FROM sessions WHERE session_id = ?`
+	var h SessionHeader
+	err := db.QueryRowContext(ctx, q, sessionID).Scan(
+		&h.SessionID, &h.ProjectName,
+		&h.LinesAdded, &h.LinesRemoved, &h.Commits, &h.PullRequests,
+		&h.ActiveSec, &h.EditsAccepted, &h.EditsRejected,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SessionHeader{}, ErrNotFound
+	}
+	if err != nil {
+		return SessionHeader{}, fmt.Errorf("session header: %w", err)
+	}
+	return h, nil
+}
+
 // Prompt is the row from the prompts rollup table.
 type Prompt struct {
 	PromptID            string

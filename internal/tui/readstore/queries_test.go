@@ -1035,6 +1035,50 @@ func TestSessionTurnChildren_OrdersAndTypes(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// SessionHeaderRow tests
+// ---------------------------------------------------------------------------
+
+func TestSessionHeader_Productivity(t *testing.T) {
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	_, err = repo.DB().ExecContext(context.Background(),
+		`INSERT INTO sessions (session_id, started_at, last_seen_at,
+		  lines_added, lines_removed, commits, pull_requests, active_seconds, edits_accepted, edits_rejected)
+		 VALUES ('s1', 1000, 2000, 500, 30, 3, 1, 600, 47, 3)`)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	h, err := readstore.SessionHeaderRow(context.Background(), pool, "s1")
+	if err != nil {
+		t.Fatalf("SessionHeaderRow: %v", err)
+	}
+	if h.LinesAdded != 500 || h.Commits != 3 || h.EditsAccepted != 47 || h.EditsRejected != 3 {
+		t.Errorf("got %+v", h)
+	}
+}
+
+func TestSessionHeader_NotFound(t *testing.T) {
+	t.Parallel()
+	db := openTestRO(t, seedSessions(t, nil))
+	_, err := readstore.SessionHeaderRow(context.Background(), db, "missing")
+	if !errors.Is(err, readstore.ErrNotFound) {
+		t.Fatalf("err=%v want ErrNotFound", err)
+	}
+}
+
 func TestSessionTurns_KeysetPagination(t *testing.T) {
 	home := t.TempDir()
 	repo, err := repository.Open(home)
