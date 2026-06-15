@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/domain"
+	"github.com/kamikaze011001/claude-code-observer/internal/rollup"
 )
 
 // InsertEvents inserts a batch of events in a single write transaction.
@@ -46,6 +47,44 @@ func (r *Repository) InsertMetricSnapshots(ctx context.Context, snaps []domain.M
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// InsertMetricsAndApplyRollups inserts a batch of metric snapshots and applies
+// the metric rollup additively, in a single transaction. Either every snapshot
+// + every rollup op lands, or nothing does. Mirrors InsertEventsAndApplyRollups.
+func (r *Repository) InsertMetricsAndApplyRollups(ctx context.Context, snaps []domain.MetricSnapshot) error {
+	if len(snaps) == 0 {
+		return nil
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := insertMetricSnapshotsTx(ctx, tx, snaps); err != nil {
+		return err
+	}
+	if err := applyMetricRollupsTx(ctx, tx, snaps); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// applyMetricRollupsTx executes metric rollup ops for each snapshot on the tx.
+// All ops target the sessions table, so execOpsOrdered's session-first pass
+// handles them without FK ordering concerns.
+func applyMetricRollupsTx(ctx context.Context, tx *sql.Tx, snaps []domain.MetricSnapshot) error {
+	for i := range snaps {
+		ops := rollup.ApplyMetric(snaps[i])
+		if err := execOpsOrdered(ctx, tx, snaps[i].MetricName, ops); err != nil {
+			return err
+		}
 	}
 	return nil
 }
