@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/productivity"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/sessions"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme"
@@ -104,6 +105,12 @@ func (m *Model) Update(msg tea.Msg) (app.View, tea.Cmd) {
 			return m, func() tea.Msg {
 				return app.PushViewMsg{V: sessions.NewList(pool, th)}
 			}
+		case v.Type == tea.KeyRunes && len(v.Runes) == 1 && v.Runes[0] == 'p':
+			pool := m.pool
+			th := m.theme
+			return m, func() tea.Msg {
+				return app.PushViewMsg{V: productivity.New(pool, th)}
+			}
 		}
 	}
 	return m, nil
@@ -114,6 +121,7 @@ func (m *Model) Title() string { return "DASHBOARD" }
 func (m *Model) ShortHelp() []key.Binding {
 	return []key.Binding{
 		key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sessions")),
+		key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "productivity")),
 		key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 		key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "about")),
 		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),

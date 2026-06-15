@@ -235,6 +235,7 @@ func (m *Model) renderHelpBar(t *theme.Theme, width int) string {
 		{Key: "↑↓", Desc: "nav"},
 		{Key: "⏎", Desc: "open"},
 		{Key: "s", Desc: "sessions"},
+		{Key: "p", Desc: "productivity"},
 		{Key: "r", Desc: "refresh"},
 		{Key: "?", Desc: "about"},
 		{Key: "q", Desc: "quit"},
