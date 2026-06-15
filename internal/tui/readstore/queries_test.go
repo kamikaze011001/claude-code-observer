@@ -28,25 +28,28 @@ func TestDashboardSnapshot_AggregatesByWindow(t *testing.T) {
 	tenDaysAgo := startOfDay.Add(-10 * 24 * time.Hour)
 	fortyDaysAgo := startOfDay.Add(-40 * 24 * time.Hour)
 
-	insertSession := func(id, project string, started time.Time, cost float64, prompts, tools, errors int, inTok, outTok int64) {
+	insertSession := func(id, project string, started time.Time, cost float64, prompts, tools, errors int, inTok, outTok int64, linesAdded, linesRemoved, commits, pullReqs, activeSec int64) {
 		_, err := repo.DB().ExecContext(context.Background(),
 			`INSERT INTO sessions
 			 (session_id, project_name, started_at, last_seen_at,
 			  cost_usd, prompts, tool_calls, api_errors,
-			  input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+			  input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+			  lines_added, lines_removed, commits, pull_requests, active_seconds)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)`,
 			id, project, started.UnixNano(), started.UnixNano(),
-			cost, prompts, tools, errors, inTok, outTok)
+			cost, prompts, tools, errors, inTok, outTok,
+			linesAdded, linesRemoved, commits, pullReqs, activeSec)
 		if err != nil {
 			t.Fatalf("insert: %v", err)
 		}
 	}
 
-	insertSession("today1", "obs", now, 1.50, 5, 20, 1, 1000, 200)
-	insertSession("today2", "obs", now.Add(time.Hour), 0.80, 3, 12, 0, 500, 100)
-	insertSession("d2", "scratch", twoDaysAgo, 2.00, 8, 30, 0, 2000, 400)
-	insertSession("d10", "obs", tenDaysAgo, 4.00, 10, 40, 2, 3000, 600)
-	insertSession("d40", "obs", fortyDaysAgo, 99.00, 100, 500, 50, 99999, 99999)
+	//                                                                          linesAdded linesRemoved commits pullReqs activeSec
+	insertSession("today1", "obs", now, 1.50, 5, 20, 1, 1000, 200, 100, 10, 2, 1, 300)
+	insertSession("today2", "obs", now.Add(time.Hour), 0.80, 3, 12, 0, 500, 100, 50, 5, 1, 0, 150)
+	insertSession("d2", "scratch", twoDaysAgo, 2.00, 8, 30, 0, 2000, 400, 200, 20, 3, 1, 600)
+	insertSession("d10", "obs", tenDaysAgo, 4.00, 10, 40, 2, 3000, 600, 400, 40, 5, 2, 900)
+	insertSession("d40", "obs", fortyDaysAgo, 99.00, 100, 500, 50, 99999, 99999, 0, 0, 0, 0, 0)
 
 	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
 	if err != nil {
@@ -90,6 +93,37 @@ func TestDashboardSnapshot_AggregatesByWindow(t *testing.T) {
 	// rows fall in that window, so Yesterday should be zero.
 	if got, want := snap.Yesterday.Sessions, int64(0); got != want {
 		t.Errorf("yesterday sessions: got %d want %d", got, want)
+	}
+
+	// Productivity aggregates — today1+today2 = 150 lines_added, 15 removed, 3 commits, 1 PR, 450s
+	if got, want := snap.Today.LinesAdded, int64(150); got != want {
+		t.Errorf("Today.LinesAdded = %d, want %d", got, want)
+	}
+	if got, want := snap.Today.LinesRemoved, int64(15); got != want {
+		t.Errorf("Today.LinesRemoved = %d, want %d", got, want)
+	}
+	if got, want := snap.Today.Commits, int64(3); got != want {
+		t.Errorf("Today.Commits = %d, want %d", got, want)
+	}
+	if got, want := snap.Today.PullRequests, int64(1); got != want {
+		t.Errorf("Today.PullRequests = %d, want %d", got, want)
+	}
+	if got, want := snap.Today.ActiveSec, int64(450); got != want {
+		t.Errorf("Today.ActiveSec = %d, want %d", got, want)
+	}
+	// 7d includes today1+today2+d2 = 350 lines_added, 6 commits
+	if got, want := snap.D7.LinesAdded, int64(350); got != want {
+		t.Errorf("D7.LinesAdded = %d, want %d", got, want)
+	}
+	if got, want := snap.D7.Commits, int64(6); got != want {
+		t.Errorf("D7.Commits = %d, want %d", got, want)
+	}
+	// 30d includes today1+today2+d2+d10 = 750 lines_added, 11 commits
+	if got, want := snap.D30.LinesAdded, int64(750); got != want {
+		t.Errorf("D30.LinesAdded = %d, want %d", got, want)
+	}
+	if got, want := snap.D30.Commits, int64(11); got != want {
+		t.Errorf("D30.Commits = %d, want %d", got, want)
 	}
 
 	if len(top) != 2 {
@@ -281,6 +315,60 @@ func TestSessionsPage_KeysetPagination(t *testing.T) {
 			}
 			seen[r.SessionID] = true
 		}
+	}
+}
+
+func TestSessionsPage_LinesAddedRemoved(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	repo, err := repository.Open(home)
+	if err != nil {
+		t.Fatalf("repository.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	base := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC).UnixNano()
+	// s1 has a higher last_seen_at so it appears as out[0] (ORDER BY last_seen_at DESC).
+	_, err = repo.DB().ExecContext(context.Background(),
+		`INSERT INTO sessions(session_id, started_at, last_seen_at, lines_added, lines_removed)
+		 VALUES ('s1', ?, ?, 250, 30)`,
+		base, base+int64(2*time.Hour))
+	if err != nil {
+		t.Fatalf("insert s1: %v", err)
+	}
+	_, err = repo.DB().ExecContext(context.Background(),
+		`INSERT INTO sessions(session_id, started_at, last_seen_at, lines_added, lines_removed)
+		 VALUES ('s2', ?, ?, 100, 10)`,
+		base, base+int64(time.Hour))
+	if err != nil {
+		t.Fatalf("insert s2: %v", err)
+	}
+
+	pool, err := readstore.OpenRO(filepath.Join(home, "db.sqlite"))
+	if err != nil {
+		t.Fatalf("OpenRO: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	out, _, err := readstore.SessionsPage(context.Background(), pool, nil, 10)
+	if err != nil {
+		t.Fatalf("SessionsPage: %v", err)
+	}
+	if len(out) != 2 {
+		t.Fatalf("rows: got %d want 2", len(out))
+	}
+	// s1 is out[0] (highest last_seen_at).
+	if got, want := out[0].LinesAdded, int64(250); got != want {
+		t.Errorf("out[0].LinesAdded = %d, want %d", got, want)
+	}
+	if got, want := out[0].LinesRemoved, int64(30); got != want {
+		t.Errorf("out[0].LinesRemoved = %d, want %d", got, want)
+	}
+	if got, want := out[1].LinesAdded, int64(100); got != want {
+		t.Errorf("out[1].LinesAdded = %d, want %d", got, want)
+	}
+	if got, want := out[1].LinesRemoved, int64(10); got != want {
+		t.Errorf("out[1].LinesRemoved = %d, want %d", got, want)
 	}
 }
 

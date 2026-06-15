@@ -13,16 +13,18 @@ import (
 
 // SessionRow is one row in the sessions list page.
 type SessionRow struct {
-	SessionID   string
-	ProjectName string // "" rendered as "(unlabeled)" by the view
-	StartedAt   time.Time
-	LastSeenAt  time.Time
-	EndedAt     time.Time // zero if Live
-	DurationSec int64
-	CostUSD     float64
-	Prompts     int64
-	Tokens      int64
-	Live        bool
+	SessionID    string
+	ProjectName  string // "" rendered as "(unlabeled)" by the view
+	StartedAt    time.Time
+	LastSeenAt   time.Time
+	EndedAt      time.Time // zero if Live
+	DurationSec  int64
+	CostUSD      float64
+	Prompts      int64
+	Tokens       int64
+	LinesAdded   int64
+	LinesRemoved int64
+	Live         bool
 }
 
 // SessionsPage returns one page of sessions most-recently-active first. cursor
@@ -41,7 +43,9 @@ SELECT session_id,
        cost_usd,
        prompts,
        -- total_tokens = input + output + cache_read + cache_creation (all four columns summed)
-       input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens AS tokens
+       input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens AS tokens,
+       lines_added,
+       lines_removed
 FROM sessions
 WHERE (? IS NULL OR last_seen_at < ?)
 ORDER BY last_seen_at DESC, started_at DESC
@@ -64,7 +68,7 @@ LIMIT ?`
 			lastSeen int64
 			ended    sql.NullInt64
 		)
-		if err := rows.Scan(&r.SessionID, &r.ProjectName, &started, &lastSeen, &ended, &r.CostUSD, &r.Prompts, &r.Tokens); err != nil {
+		if err := rows.Scan(&r.SessionID, &r.ProjectName, &started, &lastSeen, &ended, &r.CostUSD, &r.Prompts, &r.Tokens, &r.LinesAdded, &r.LinesRemoved); err != nil {
 			return nil, nil, fmt.Errorf("sessions page scan: %w", err)
 		}
 		r.StartedAt = time.Unix(0, started).Local()
@@ -91,12 +95,17 @@ LIMIT ?`
 
 // WindowStats is the rollup over a single time window.
 type WindowStats struct {
-	Sessions int64
-	CostUSD  float64
-	Prompts  int64
-	Tokens   int64
-	Tools    int64
-	Errors   int64
+	Sessions     int64
+	CostUSD      float64
+	Prompts      int64
+	Tokens       int64
+	Tools        int64
+	Errors       int64
+	LinesAdded   int64
+	LinesRemoved int64
+	Commits      int64
+	PullRequests int64
+	ActiveSec    int64
 }
 
 // Snapshot is the dashboard's three-window rollup.
@@ -134,31 +143,49 @@ SELECT
   COALESCE(SUM(CASE WHEN started_at >= ? THEN input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens             END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls                                                                           END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN lines_added                                                                          END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN lines_removed                                                                        END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN commits                                                                              END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN pull_requests                                                                        END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN active_seconds                                                                       END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN 1                                                                                    END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd                                                                             END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts                                                                              END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens             END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls                                                                           END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN lines_added                                                                          END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN lines_removed                                                                        END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN commits                                                                              END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN pull_requests                                                                        END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN active_seconds                                                                       END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN 1                                                                                    END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN cost_usd                                                                             END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN prompts                                                                              END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens             END), 0),
   COALESCE(SUM(CASE WHEN started_at >= ? THEN tool_calls                                                                           END), 0),
-  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors                                                                           END), 0)
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN api_errors                                                                           END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN lines_added                                                                          END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN lines_removed                                                                        END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN commits                                                                              END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN pull_requests                                                                        END), 0),
+  COALESCE(SUM(CASE WHEN started_at >= ? THEN active_seconds                                                                       END), 0)
 FROM sessions
 WHERE started_at >= ?`
 
 	var s Snapshot
 	err := db.QueryRowContext(ctx, q,
-		today, today, today, today, today, today,
-		d7, d7, d7, d7, d7, d7,
-		d30, d30, d30, d30, d30, d30,
+		today, today, today, today, today, today, today, today, today, today, today,
+		d7, d7, d7, d7, d7, d7, d7, d7, d7, d7, d7,
+		d30, d30, d30, d30, d30, d30, d30, d30, d30, d30, d30,
 		d30,
 	).Scan(
 		&s.Today.Sessions, &s.Today.CostUSD, &s.Today.Prompts, &s.Today.Tokens, &s.Today.Tools, &s.Today.Errors,
+		&s.Today.LinesAdded, &s.Today.LinesRemoved, &s.Today.Commits, &s.Today.PullRequests, &s.Today.ActiveSec,
 		&s.D7.Sessions, &s.D7.CostUSD, &s.D7.Prompts, &s.D7.Tokens, &s.D7.Tools, &s.D7.Errors,
+		&s.D7.LinesAdded, &s.D7.LinesRemoved, &s.D7.Commits, &s.D7.PullRequests, &s.D7.ActiveSec,
 		&s.D30.Sessions, &s.D30.CostUSD, &s.D30.Prompts, &s.D30.Tokens, &s.D30.Tools, &s.D30.Errors,
+		&s.D30.LinesAdded, &s.D30.LinesRemoved, &s.D30.Commits, &s.D30.PullRequests, &s.D30.ActiveSec,
 	)
 	if err != nil {
 		return Snapshot{}, nil, fmt.Errorf("snapshot query: %w", err)
