@@ -90,6 +90,36 @@ func TestRebuildRollups_IsIdempotent(t *testing.T) {
 	}
 }
 
+func TestRebuildRollups_ReplaysProductivityMetrics(t *testing.T) {
+	repo, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer repo.Close()
+	ctx := context.Background()
+
+	snaps := []domain.MetricSnapshot{
+		{TS: 100, SessionID: "s1", MetricName: domain.MetricLinesOfCode, Value: 100, Attrs: map[string]any{"type": "added"}},
+		{TS: 200, SessionID: "s1", MetricName: domain.MetricLinesOfCode, Value: 50, Attrs: map[string]any{"type": "added"}},
+		{TS: 300, SessionID: "s1", MetricName: domain.MetricCommit, Value: 3},
+	}
+	if err := repo.InsertMetricsAndApplyRollups(ctx, snaps); err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+
+	if err := repo.RebuildRollups(ctx); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	var added, commits int64
+	if err := repo.DB().QueryRowContext(ctx,
+		`SELECT lines_added, commits FROM sessions WHERE session_id='s1'`).Scan(&added, &commits); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if added != 150 || commits != 3 {
+		t.Errorf("after rebuild lines_added=%d commits=%d, want 150/3", added, commits)
+	}
+}
+
 func TestRebuildRollups_OutOfOrderEventInEventsTable(t *testing.T) {
 	repo := openTempRepo(t)
 	defer repo.Close()
