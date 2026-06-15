@@ -3,7 +3,6 @@ package productivity
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -44,7 +43,7 @@ func (m *Model) View(width, height int) string {
 			d.Day,
 			fmt.Sprintf("+%s -%s", component.HumanInt(d.LinesAdded), component.HumanInt(d.LinesRemoved)),
 			d.Commits,
-			fmtActiveDur(d.ActiveSec),
+			component.HumanActiveDuration(d.ActiveSec),
 			acceptRate(d.EditsAccepted, d.EditsRejected),
 		)
 		if i == m.cursor {
@@ -59,20 +58,6 @@ func (m *Model) View(width, height int) string {
 	}
 
 	return component.Card(t, "productivity (last 30 days)", strings.TrimRight(b.String(), "\n"), width)
-}
-
-// fmtActiveDur renders a duration in seconds as a compact human string.
-func fmtActiveDur(sec int64) string {
-	if sec <= 0 {
-		return "0m"
-	}
-	d := time.Duration(sec) * time.Second
-	h := int(d.Hours())
-	mn := int(d.Minutes()) % 60
-	if h > 0 {
-		return fmt.Sprintf("%dh%02dm", h, mn)
-	}
-	return fmt.Sprintf("%dm", mn)
 }
 
 // acceptRate formats the edit accept percentage, e.g. "90%" or "—" when no edits.

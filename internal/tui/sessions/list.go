@@ -255,13 +255,6 @@ func (m *List) helpHints() []component.KeyHint {
 	}
 }
 
-// linesCell renders "+1.2k -340" with added in green, removed in red.
-func linesCell(t *theme.Theme, added, removed int64) string {
-	add := lipgloss.NewStyle().Foreground(t.Palette.Green).Render("+" + component.HumanInt(added))
-	rem := lipgloss.NewStyle().Foreground(t.Palette.Red).Render("-" + component.HumanInt(removed))
-	return add + " " + rem
-}
-
 func defaultProject(s string) string {
 	if s == "" {
 		return "(unlabeled)"

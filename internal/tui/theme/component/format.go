@@ -17,6 +17,20 @@ func humanDuration(sec int64) string {
 	return fmt.Sprintf("%dh%02dm", sec/3600, (sec%3600)/60)
 }
 
+// HumanActiveDuration formats a span of seconds at minute granularity for the
+// productivity surfaces: "0m" for non-positive, "23m" below an hour, "4h12m"
+// at or above. Unlike humanDuration it never shows seconds and renders zero as
+// "0m" rather than "".
+func HumanActiveDuration(sec int64) string {
+	if sec <= 0 {
+		return "0m"
+	}
+	if sec < 3600 {
+		return fmt.Sprintf("%dm", sec/60)
+	}
+	return fmt.Sprintf("%dh%02dm", sec/3600, (sec%3600)/60)
+}
+
 // HumanInt formats large integers compactly: "1.2M", "38k", "999".
 func HumanInt(n int64) string {
 	switch {

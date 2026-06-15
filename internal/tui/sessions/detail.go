@@ -536,24 +536,10 @@ func (m *Detail) renderProductivityCard(t *theme.Theme, width int) string {
 	writeKV("lines", fmt.Sprintf("+%s -%s", component.HumanInt(h.LinesAdded), component.HumanInt(h.LinesRemoved)))
 	writeKV("commits", fmt.Sprintf("%d", h.Commits))
 	writeKV("pull reqs", fmt.Sprintf("%d", h.PullRequests))
-	writeKV("active", fmtActiveDur(h.ActiveSec))
+	writeKV("active", component.HumanActiveDuration(h.ActiveSec))
 	writeKV("edit accept", acceptRate)
 
 	return component.Card(t, "productivity", strings.TrimRight(b.String(), "\n"), width)
-}
-
-// fmtActiveDur renders seconds as "23m" / "4h12m" / "0m".
-func fmtActiveDur(sec int64) string {
-	if sec <= 0 {
-		return "0m"
-	}
-	d := time.Duration(sec) * time.Second
-	h := int(d.Hours())
-	mn := int(d.Minutes()) % 60
-	if h > 0 {
-		return fmt.Sprintf("%dh%02dm", h, mn)
-	}
-	return fmt.Sprintf("%dm", mn)
 }
 
 // clampOffset slides m.offset so the cursor is in the visible window and the

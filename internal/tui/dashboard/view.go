@@ -17,21 +17,6 @@ func fmtLines(added, removed int64) string {
 	return fmt.Sprintf("+%s -%s", component.HumanInt(added), component.HumanInt(removed))
 }
 
-// fmtActive renders a duration in seconds as a compact human string, e.g.
-// "23m", "4h12m". Zero renders as "0m".
-func fmtActive(sec int64) string {
-	if sec <= 0 {
-		return "0m"
-	}
-	d := time.Duration(sec) * time.Second
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	if h > 0 {
-		return fmt.Sprintf("%dh%02dm", h, m)
-	}
-	return fmt.Sprintf("%dm", m)
-}
-
 // resolvedTheme returns the model's theme pointer if set, else a pointer to
 // the package-level default. This avoids a nil-deref in tests that set only
 // specific model fields.
@@ -106,7 +91,7 @@ func renderWindowCard(t *theme.Theme, title string, ws readstore.WindowStats, ca
 	writeKV("cost", fmt.Sprintf("$%.2f", ws.CostUSD))
 	writeKV("lines", fmtLines(ws.LinesAdded, ws.LinesRemoved))
 	writeKV("commits", fmt.Sprintf("%d", ws.Commits))
-	writeKV("active", fmtActive(ws.ActiveSec))
+	writeKV("active", component.HumanActiveDuration(ws.ActiveSec))
 
 	errVal := fmt.Sprintf("%d", ws.Errors)
 	var errStyled string
