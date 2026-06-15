@@ -23,8 +23,9 @@ const (
 	ColBarW        = 10
 	ColPrW         = 8
 	ColTokW        = 7
+	ColLinesW      = 10 // "+38k -340 " — added/removed pair
 	ColLiveW       = 8
-	ColGutterCount = 8 // single-space gutters between the 9 columns
+	ColGutterCount = 9 // single-space gutters between the 10 columns
 )
 
 // ProjMinW is the minimum project-column display width before the spend bar
@@ -38,15 +39,17 @@ func TruncToWidth(s string, w int) string { return truncToWidth(s, w) }
 
 // SessionRowData is one row in the sessions list or in a dashboard panel.
 type SessionRowData struct {
-	Index       int       // 1-based position in the page (0 to omit)
-	Started     time.Time
-	ProjectName string
-	DurationSec int64 // 0 to omit
-	CostUSD     float64
-	MaxCostUSD  float64 // largest cost on the page; scales the spend bar (0 => empty bar)
-	Prompts     int64
-	Tokens      int64 // 0 to omit
-	Live        bool
+	Index        int       // 1-based position in the page (0 to omit)
+	Started      time.Time
+	ProjectName  string
+	DurationSec  int64 // 0 to omit
+	CostUSD      float64
+	MaxCostUSD   float64 // largest cost on the page; scales the spend bar (0 => empty bar)
+	Prompts      int64
+	Tokens       int64 // 0 to omit
+	LinesAdded   int64 // 0 renders as "+0"
+	LinesRemoved int64 // 0 renders as "-0"
+	Live         bool
 }
 
 // SessionRow renders one row inside a sessions table card. width is the
@@ -54,7 +57,7 @@ type SessionRowData struct {
 // returned line satisfies lipgloss.Width(out) == width.
 func SessionRow(t *theme.Theme, r SessionRowData, selected bool, width int) string {
 	// Compute project column width with full bar first.
-	projW := width - ColIdxW - ColStartW - ColDurW - ColCostW - ColBarW - ColPrW - ColTokW - ColLiveW - ColGutterCount
+	projW := width - ColIdxW - ColStartW - ColDurW - ColCostW - ColBarW - ColPrW - ColTokW - ColLinesW - ColLiveW - ColGutterCount
 	effectiveBarW := ColBarW
 
 	// On narrow terminals the spend bar shrinks first so the project column
@@ -70,7 +73,7 @@ func SessionRow(t *theme.Theme, r SessionRowData, selected bool, width int) stri
 
 	// Safety clamp: if even with zero bar we can't reach ProjMinW, shrink
 	// projW so the total content never exceeds width.
-	maxProjW := width - ColIdxW - ColStartW - ColDurW - ColCostW - effectiveBarW - ColPrW - ColTokW - ColLiveW - ColGutterCount
+	maxProjW := width - ColIdxW - ColStartW - ColDurW - ColCostW - effectiveBarW - ColPrW - ColTokW - ColLinesW - ColLiveW - ColGutterCount
 	if maxProjW < projW {
 		projW = maxProjW
 		if projW < 0 {
@@ -86,13 +89,17 @@ func SessionRow(t *theme.Theme, r SessionRowData, selected bool, width int) stri
 	bar := padRight(costBar(t, r.CostUSD, r.MaxCostUSD, effectiveBarW), effectiveBarW)
 	prompts := padRight(fmt.Sprintf("%d", r.Prompts), ColPrW)
 	tokens := padRight(HumanInt(r.Tokens), ColTokW)
+	linesStr := lipgloss.NewStyle().Foreground(t.Palette.Green).Render("+"+HumanInt(r.LinesAdded)) +
+		" " +
+		lipgloss.NewStyle().Foreground(t.Palette.Red).Render("-"+HumanInt(r.LinesRemoved))
+	lines := padRight(linesStr, ColLinesW)
 	live := padRight("", ColLiveW)
 	if r.Live {
 		live = padRight(StatusPill(t, StatusLive), ColLiveW)
 	}
 
 	line := lipgloss.JoinHorizontal(lipgloss.Top,
-		idx, " ", start, " ", project, " ", dur, " ", cost, " ", bar, " ", prompts, " ", tokens, " ", live,
+		idx, " ", start, " ", project, " ", dur, " ", cost, " ", bar, " ", prompts, " ", tokens, " ", lines, " ", live,
 	)
 	if selected {
 		line = lipgloss.NewStyle().Background(t.Palette.BgAlt).Width(width).Render(line)

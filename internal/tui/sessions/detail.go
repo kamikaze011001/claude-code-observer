@@ -37,6 +37,7 @@ type detailDataMsg struct {
 	items   []readstore.SessionItem
 	hasMore bool
 	at      time.Time
+	header  readstore.SessionHeader
 }
 
 // detailOlderMsg carries items older than the current tail. Unlike
@@ -59,6 +60,7 @@ type Detail struct {
 	pool         *sql.DB
 	theme        *theme.Theme
 	sessionID    string
+	header       readstore.SessionHeader
 	items        []timelineItem
 	cursor       int
 	offset       int  // index of first item rendered in the visible window
@@ -164,6 +166,7 @@ func (m *Detail) Update(msg tea.Msg) (app.View, tea.Cmd) {
 		m.applyItems(v.items, false)
 		m.hasMore = v.hasMore
 		m.lastOK = v.at
+		m.header = v.header
 		m.inFlight = false
 		m.loadingOlder = false
 		m.stale = false
@@ -293,7 +296,12 @@ func (m *Detail) View(width, height int) string {
 		body := th.Muted.Render("no events for this session")
 		card := component.Card(th, "", body, width)
 		help := component.HelpBar(th, m.helpHints(), width)
-		return strings.Join([]string{header, "", card, "", help}, "\n")
+		emptyParts := []string{header, ""}
+		if m.header.SessionID != "" {
+			emptyParts = append(emptyParts, m.renderProductivityCard(th, width), "")
+		}
+		emptyParts = append(emptyParts, card, "", help)
+		return strings.Join(emptyParts, "\n")
 	}
 
 	m.viewport = visibleRows(height)
@@ -387,7 +395,11 @@ func (m *Detail) View(width, height int) string {
 	}
 
 	help := component.HelpBar(th, m.helpHints(), width)
-	parts := []string{header, "", card}
+	parts := []string{header, ""}
+	if m.header.SessionID != "" {
+		parts = append(parts, m.renderProductivityCard(th, width), "")
+	}
+	parts = append(parts, card)
 	if hint != "" {
 		parts = append(parts, hint)
 	}
@@ -470,7 +482,9 @@ func (m *Detail) fetchCmd() tea.Cmd {
 		if err != nil {
 			return app.ErrMsg{Err: err}
 		}
-		return detailDataMsg{items: items, hasMore: hasMore, at: time.Now()}
+		// Best-effort: a missing or erroring header is treated as zero-value (card hidden).
+		hdr, _ := readstore.SessionHeaderRow(ctx, pool, sid)
+		return detailDataMsg{items: items, hasMore: hasMore, at: time.Now(), header: hdr}
 	}
 }
 
@@ -501,6 +515,31 @@ func itemRows(it timelineItem) int {
 		return 1 + len(it.children)
 	}
 	return 1
+}
+
+// renderProductivityCard shows lines, commits/PRs, active time, and edit
+// accept-rate for the session. It is only rendered when m.header.SessionID is
+// non-empty (i.e. the header was successfully loaded from the DB).
+func (m *Detail) renderProductivityCard(t *theme.Theme, width int) string {
+	h := m.header
+	acceptRate := "—"
+	total := h.EditsAccepted + h.EditsRejected
+	if total > 0 {
+		pct := float64(h.EditsAccepted) / float64(total) * 100
+		acceptRate = fmt.Sprintf("%.0f%% (%d/%d)", pct, h.EditsAccepted, total)
+	}
+
+	var b strings.Builder
+	writeKV := func(label, value string) {
+		b.WriteString(t.Label.Render(lipgloss.NewStyle().Width(12).Render(label)) + t.Value.Render(value) + "\n")
+	}
+	writeKV("lines", fmt.Sprintf("+%s -%s", component.HumanInt(h.LinesAdded), component.HumanInt(h.LinesRemoved)))
+	writeKV("commits", fmt.Sprintf("%d", h.Commits))
+	writeKV("pull reqs", fmt.Sprintf("%d", h.PullRequests))
+	writeKV("active", component.HumanActiveDuration(h.ActiveSec))
+	writeKV("edit accept", acceptRate)
+
+	return component.Card(t, "productivity", strings.TrimRight(b.String(), "\n"), width)
 }
 
 // clampOffset slides m.offset so the cursor is in the visible window and the

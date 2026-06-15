@@ -30,8 +30,8 @@ func TestOpen_AppliesMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("schema_version: %v", err)
 	}
-	if v != 2 {
-		t.Errorf("schema_version = %d, want 2", v)
+	if v != 3 {
+		t.Errorf("schema_version = %d, want 3", v)
 	}
 }
 
@@ -54,8 +54,8 @@ func TestOpen_Idempotent(t *testing.T) {
 	if err := repo2.DB().QueryRow("SELECT COUNT(*) FROM schema_version").Scan(&n); err != nil {
 		t.Fatalf("count: %v", err)
 	}
-	if n != 2 {
-		t.Errorf("schema_version rows = %d, want 2", n)
+	if n != 3 {
+		t.Errorf("schema_version rows = %d, want 3", n)
 	}
 }
 

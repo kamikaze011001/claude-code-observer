@@ -16,8 +16,10 @@ const sessionCounterUpsert = `INSERT INTO sessions (
     session_id, started_at, last_seen_at,
     input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
     cost_usd, api_requests, api_errors, subagent_requests, auxiliary_requests,
-    tool_calls, tool_denied, prompts
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    tool_calls, tool_denied, prompts,
+    lines_added, lines_removed, commits, pull_requests,
+    active_seconds, edits_accepted, edits_rejected
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(session_id) DO UPDATE SET
     started_at            = MIN(started_at, excluded.started_at),
     last_seen_at          = MAX(last_seen_at, excluded.last_seen_at),
@@ -32,15 +34,24 @@ ON CONFLICT(session_id) DO UPDATE SET
     auxiliary_requests    = auxiliary_requests    + excluded.auxiliary_requests,
     tool_calls            = tool_calls            + excluded.tool_calls,
     tool_denied           = tool_denied           + excluded.tool_denied,
-    prompts               = prompts               + excluded.prompts`
+    prompts               = prompts               + excluded.prompts,
+    lines_added           = lines_added           + excluded.lines_added,
+    lines_removed         = lines_removed         + excluded.lines_removed,
+    commits               = commits               + excluded.commits,
+    pull_requests         = pull_requests         + excluded.pull_requests,
+    active_seconds        = active_seconds        + excluded.active_seconds,
+    edits_accepted        = edits_accepted        + excluded.edits_accepted,
+    edits_rejected        = edits_rejected        + excluded.edits_rejected`
 
 // sessionCounterArgs builds the args slice for sessionCounterUpsert.
 // Pass 0 for any counter that this updater does not bump.
 type sessionCounters struct {
 	InputTokens, OutputTokens, CacheReadTokens, CacheCreationTokens int64
 	CostUSD                                                          float64
-	APIRequests, APIErrors, SubagentRequests, AuxiliaryRequests       int64
-	ToolCalls, ToolDenied, Prompts                                    int64
+	APIRequests, APIErrors, SubagentRequests, AuxiliaryRequests     int64
+	ToolCalls, ToolDenied, Prompts                                  int64
+	LinesAdded, LinesRemoved, Commits, PullRequests                 int64
+	ActiveSeconds, EditsAccepted, EditsRejected                     int64
 }
 
 func sessionCounterArgs(sessionID string, ts int64, c sessionCounters) []any {
@@ -49,6 +60,8 @@ func sessionCounterArgs(sessionID string, ts int64, c sessionCounters) []any {
 		c.InputTokens, c.OutputTokens, c.CacheReadTokens, c.CacheCreationTokens,
 		c.CostUSD, c.APIRequests, c.APIErrors, c.SubagentRequests, c.AuxiliaryRequests,
 		c.ToolCalls, c.ToolDenied, c.Prompts,
+		c.LinesAdded, c.LinesRemoved, c.Commits, c.PullRequests,
+		c.ActiveSeconds, c.EditsAccepted, c.EditsRejected,
 	}
 }
 

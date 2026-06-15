@@ -130,6 +130,39 @@ func (r *Repository) RebuildRollups(ctx context.Context) (err error) {
 	if err = rows.Err(); err != nil {
 		return fmt.Errorf("rows: %w", err)
 	}
+	rows.Close() // explicit close before second query on the same tx
+
+	// Second pass: replay metric snapshots so productivity columns are
+	// reproduced. Delta values + additive upsert ⇒ replay re-sums correctly.
+	mrows, err := tx.QueryContext(ctx, `
+		SELECT id, ts, COALESCE(session_id, ''), metric_name, value, attrs
+		FROM metric_snapshots
+		ORDER BY ts ASC, id ASC`)
+	if err != nil {
+		return fmt.Errorf("select metric_snapshots: %w", err)
+	}
+	defer mrows.Close()
+
+	for mrows.Next() {
+		var snap domain.MetricSnapshot
+		var attrs string
+		if err = mrows.Scan(&snap.ID, &snap.TS, &snap.SessionID, &snap.MetricName, &snap.Value, &attrs); err != nil {
+			return fmt.Errorf("scan metric: %w", err)
+		}
+		snap.Attrs = map[string]any{}
+		if attrs != "" {
+			if jerr := jsonUnmarshal(attrs, &snap.Attrs); jerr != nil {
+				return fmt.Errorf("unmarshal metric attrs id=%d: %w", snap.ID, jerr)
+			}
+		}
+		if err = execOpsOrdered(ctx, tx, snap.MetricName, rollup.ApplyMetric(snap)); err != nil {
+			return fmt.Errorf("metric rollup id=%d: %w", snap.ID, err)
+		}
+	}
+	if err = mrows.Err(); err != nil {
+		return fmt.Errorf("metric rows: %w", err)
+	}
+
 	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}

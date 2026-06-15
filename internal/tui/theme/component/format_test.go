@@ -19,6 +19,22 @@ func TestHumanDuration(t *testing.T) {
 	}
 }
 
+func TestHumanActiveDuration(t *testing.T) {
+	cases := []struct {
+		sec  int64
+		want string
+	}{
+		{0, "0m"}, {-1, "0m"},
+		{30, "0m"}, {60, "1m"}, {1380, "23m"}, {3599, "59m"},
+		{3600, "1h00m"}, {15120, "4h12m"},
+	}
+	for _, c := range cases {
+		if got := HumanActiveDuration(c.sec); got != c.want {
+			t.Errorf("HumanActiveDuration(%d) = %q want %q", c.sec, got, c.want)
+		}
+	}
+}
+
 func TestHumanInt(t *testing.T) {
 	cases := []struct {
 		n    int64

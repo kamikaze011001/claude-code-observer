@@ -172,8 +172,8 @@ func TestRunMigrations_EmbeddedInitial(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_version").Scan(&v); err != nil {
 		t.Fatalf("schema_version: %v", err)
 	}
-	if v != 2 {
-		t.Errorf("version = %d, want 2", v)
+	if v != 3 {
+		t.Errorf("version = %d, want 3", v)
 	}
 
 	for _, table := range []string{"events", "sessions", "prompts", "metric_snapshots"} {

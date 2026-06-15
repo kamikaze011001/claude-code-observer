@@ -70,7 +70,7 @@ func (s *Service) IngestMetrics(ctx context.Context, req *colmetricspb.ExportMet
 			}
 		}
 	}
-	if err := s.repo.InsertMetricSnapshots(ctx, snaps); err != nil {
+	if err := s.repo.InsertMetricsAndApplyRollups(ctx, snaps); err != nil {
 		return fmt.Errorf("insert metric snapshots: %w", err)
 	}
 	return nil

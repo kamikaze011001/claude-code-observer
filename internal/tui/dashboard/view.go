@@ -12,6 +12,11 @@ import (
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
 )
 
+// fmtLines renders an added/removed pair compactly, e.g. "+5,054 -324".
+func fmtLines(added, removed int64) string {
+	return fmt.Sprintf("+%s -%s", component.HumanInt(added), component.HumanInt(removed))
+}
+
 // resolvedTheme returns the model's theme pointer if set, else a pointer to
 // the package-level default. This avoids a nil-deref in tests that set only
 // specific model fields.
@@ -84,6 +89,9 @@ func renderWindowCard(t *theme.Theme, title string, ws readstore.WindowStats, ca
 	writeKV("tokens", component.HumanInt(ws.Tokens))
 	writeKV("tools", component.HumanInt(ws.Tools))
 	writeKV("cost", fmt.Sprintf("$%.2f", ws.CostUSD))
+	writeKV("lines", fmtLines(ws.LinesAdded, ws.LinesRemoved))
+	writeKV("commits", fmt.Sprintf("%d", ws.Commits))
+	writeKV("active", component.HumanActiveDuration(ws.ActiveSec))
 
 	errVal := fmt.Sprintf("%d", ws.Errors)
 	var errStyled string
@@ -212,6 +220,7 @@ func (m *Model) renderHelpBar(t *theme.Theme, width int) string {
 		{Key: "↑↓", Desc: "nav"},
 		{Key: "⏎", Desc: "open"},
 		{Key: "s", Desc: "sessions"},
+		{Key: "p", Desc: "productivity"},
 		{Key: "r", Desc: "refresh"},
 		{Key: "?", Desc: "about"},
 		{Key: "q", Desc: "quit"},

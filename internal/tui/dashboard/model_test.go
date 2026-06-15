@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/app"
+	"github.com/kamikaze011001/claude-code-observer/internal/tui/productivity"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/readstore"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/sessions"
 	"github.com/kamikaze011001/claude-code-observer/internal/tui/theme/component"
@@ -177,5 +178,22 @@ func TestModel_KeySEmitsPushSessionsList(t *testing.T) {
 	}
 	if _, isList := push.V.(*sessions.List); !isList {
 		t.Fatalf("pushed view is %T, want *sessions.List", push.V)
+	}
+}
+
+func TestModel_KeyPEmitsPushProductivity(t *testing.T) {
+	t.Parallel()
+	m := New(nil, nil)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	if cmd == nil {
+		t.Fatal("no cmd returned for 'p'")
+	}
+	msg := cmd()
+	push, ok := msg.(app.PushViewMsg)
+	if !ok {
+		t.Fatalf("msg=%T want PushViewMsg", msg)
+	}
+	if _, isProd := push.V.(*productivity.Model); !isProd {
+		t.Fatalf("pushed view is %T, want *productivity.Model", push.V)
 	}
 }
