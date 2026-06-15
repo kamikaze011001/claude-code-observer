@@ -297,6 +297,33 @@ plus any metric-specific attributes listed in the "Additional Attributes" column
 > - `cacheRead` — Tokens retrieved from the prompt cache for this request. **Note camelCase.**
 > - `cacheCreation` — Tokens written to the prompt cache when creating a new cache entry. **Note camelCase.**
 
+### 7.2 Metric temporality (verified empirically, 2026-06-15)
+
+Claude Code exports counter metrics with **DELTA** temporality: each datapoint
+is the increment for its export interval, **not** a cumulative running total.
+Aggregate them with `SUM` (or an additive upsert `col = col + excluded.col`),
+**never** `MAX`. (The descriptions above that say "Cumulative" refer to what the
+counter *represents over the session*, not the wire temporality — on the wire,
+with the default `delta` preference, each datapoint is an interval increment.)
+
+Verified by: per-session sums of `claude_code.cost.usage` equal the
+event-derived `sessions.cost_usd` to the cent, and `claude_code.token.usage`
+input sums equal `sessions.input_tokens` exactly. A `lines_of_code.count` series
+within one session is non-monotonic (e.g. 156 → 633 → 201), confirming deltas.
+
+Per-metric notes for the productivity rollup (`internal/rollup/metric_handlers.go`):
+- `lines_of_code.count`: attr `type` ∈ {added, removed}. No `language`/`model`
+  attr on CC ≤ 2.1.158 — per-language breakdown is a future enhancement.
+- `active_time.total`: attr `type` ∈ {user, cli}. **Use `type=user` only**;
+  `type=cli` reports process-uptime-like values (~50× larger) and is excluded.
+- `code_edit_tool.decision`: attr `decision` ∈ {accept, reject}; value = 1.
+- `cost.usage` / `token.usage` / `session.count`: NOT rolled up — events already
+  derive cost/tokens; rolling these up would double-count.
+
+These productivity metrics (`lines_of_code`, `commit`, `pull_request`,
+`active_time`, `code_edit_tool.decision`) are now consumed by the metric rollup
+and aggregated into the `sessions` table's productivity columns.
+
 ---
 
 ## 8. Log-Event Catalogue
